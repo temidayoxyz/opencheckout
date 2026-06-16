@@ -3,18 +3,12 @@
   width: auto;
 }
 
-/* ── Landing page ── */
-.landing-page {
-  text-align: center;
-}
-
 /* ── Hero ── */
 .hero-actions {
   display: flex;
   gap: 1rem;
   margin-top: 2rem;
   flex-wrap: wrap;
-  justify-content: center;
 }
 
 .hero-button {
@@ -82,7 +76,6 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   margin-top: 2rem;
-  text-align: center;
 }
 
 .landing-card {
@@ -109,7 +102,6 @@
 
 /* ── CTA ── */
 .cta-section {
-  text-align: center;
   margin-top: 2rem;
 }
 
