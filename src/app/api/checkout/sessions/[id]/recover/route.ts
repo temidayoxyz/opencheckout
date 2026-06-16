@@ -4,40 +4,24 @@ import {
   updateSessionStatus,
 } from "@/lib/checkout/sessions";
 import { SESSION_STATUS } from "@/lib/checkout/state-machine";
-import { authenticateApiKey } from "@/lib/merchant/auth";
 
 /**
  * POST /api/checkout/sessions/:id/recover
  *
- * Attempts to recover a stuck session. Requires API key authentication.
- * Only the merchant who owns the session can recover it.
+ * Attempts to recover a stuck session where the customer approved
+ * the payment but the ASE redirect never arrived.
+ *
+ * Checks the incoming payment status via the public Open Payments endpoint.
+ * No authentication required — this is a customer-facing recovery flow.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Authenticate
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
-  if (!merchant) {
-    return NextResponse.json(
-      { error: { message: "Invalid API key" } },
-      { status: 401 }
-    );
-  }
-
   const { id: sessionId } = await params;
 
   const session = await getCheckoutSession(sessionId);
   if (!session) {
-    return NextResponse.json(
-      { error: { message: "Session not found" } },
-      { status: 404 }
-    );
-  }
-
-  // Only the merchant who owns the session can recover it
-  if (session.merchantId !== merchant.id) {
     return NextResponse.json(
       { error: { message: "Session not found" } },
       { status: 404 }

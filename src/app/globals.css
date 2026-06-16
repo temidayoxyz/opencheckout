@@ -56,67 +56,35 @@
 /* 320→300, 330→400, 340→400, 450→500, 480→500, 540→600, 700→700 */
 /* Weight, not opacity, carries hierarchy — no mid-gray text */
 
-body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  body {
+    @apply bg-white text-black antialiased;
+  }
 }
 
-/* Pill button — the only CTA shape */
-.btn-primary {
-  background: var(--color-primary);
-  color: var(--color-on-primary);
-  font-weight: 500;
-  border-radius: var(--radius-pill);
-  padding: 10px 20px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: opacity 0.15s;
-}
-.btn-primary:hover {
-  opacity: 0.88;
-}
+@layer components {
+  .btn-primary {
+    @apply bg-black text-white font-medium rounded-full inline-flex items-center gap-2 px-5 py-2.5 transition-opacity;
+  }
+  .btn-primary:hover { opacity: 0.88; }
 
-.btn-secondary {
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-weight: 500;
-  border-radius: var(--radius-pill);
-  padding: 8px 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: opacity 0.15s;
-}
-.btn-secondary:hover {
-  opacity: 0.7;
-}
+  .btn-secondary {
+    @apply bg-white text-black font-medium rounded-full inline-flex items-center gap-2 px-[18px] py-2 transition-opacity;
+  }
+  .btn-secondary:hover { opacity: 0.7; }
 
-/* Color-block section — the defining surface */
-.color-block {
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xxl, 48px);
-}
-.color-block-lime { background: var(--color-block-lime); }
-.color-block-lilac { background: var(--color-block-lilac); }
-.color-block-cream { background: var(--color-block-cream); }
-.color-block-mint { background: var(--color-block-mint); }
-.color-block-pink { background: var(--color-block-pink); }
-.color-block-coral { background: var(--color-block-coral); }
-.color-block-navy { background: var(--color-block-navy); color: var(--color-inverse-ink); }
+  .color-block {
+    @apply rounded-[24px] p-12;
+  }
+  .color-block-lime { @apply bg-[#e9f5e4]; }
+  .color-block-lilac { @apply bg-[#ede3f0]; }
+  .color-block-cream { @apply bg-[#faf6ee]; }
+  .color-block-mint { @apply bg-[#e2f3ee]; }
+  .color-block-pink { @apply bg-[#fae8ee]; }
+  .color-block-coral { @apply bg-[#fde8e3]; }
+  .color-block-navy { @apply bg-[#1a1d28] text-white; }
 
-/* Hairline card — elevation replaced by border */
-.card-hairline {
-  background: var(--color-canvas);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-lg);
-}
-
-/* Section spacing — 96px gaps between major blocks */
-.section-gap {
-  padding-top: 96px;
-  padding-bottom: 96px;
+  .card-hairline {
+    @apply bg-white border border-gray-200 rounded-[24px];
+  }
 }
