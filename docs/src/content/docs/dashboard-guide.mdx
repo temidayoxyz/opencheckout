@@ -1,0 +1,100 @@
+---
+title: Dashboard Guide
+description: How to use the OpenCheckout merchant dashboard to manage transactions, API keys, and webhook settings.
+---
+
+The OpenCheckout dashboard is the merchant-facing interface for managing your checkout instance. It is accessible at `/dashboard` on your OpenCheckout domain (e.g., `https://checkout.yourdomain.com/dashboard`) and is protected by your API key.
+
+## Signing In
+
+The dashboard requires authentication with an API key. When you first visit `/dashboard`, you will see a sign-in form.
+
+Enter your API key (the `sk_...` value from the setup wizard or from your key management page) and click **Sign In**. The key is stored in a browser cookie for the current session and is sent as a Bearer token with every dashboard API request.
+
+To sign out, click **Log out** in the top navigation bar.
+
+## Transactions
+
+The Transactions page (`/dashboard`) is the default view after signing in. It lists every checkout session created through your API, ordered by creation date.
+
+### Table Columns
+
+| Column | Description |
+|---|---|
+| **Session** | The checkout session ID (e.g., `cs_abc123xyz`). This is the primary identifier for every payment. |
+| **Amount** | The total payment amount in the session's currency, formatted for display. |
+| **Status** | The current state of the session. See statuses below. |
+| **Date** | The date the session was created. |
+| **Customer** | The customer's wallet address URL, if they entered one during the checkout flow. Shows "—" if the session was created but the customer never visited the checkout page. |
+
+### Session Statuses
+
+| Status | Meaning |
+|---|---|
+| **open** | The session is active and can be used for payment. The customer can still visit the checkout page. |
+| **completed** | The payment was successfully processed. An outgoing payment was created and the customer was redirected to the success URL. |
+| **expired** | The session passed its expiration time (default 24 hours) without being completed. |
+| **canceled** | The session was manually expired via the API or dashboard. |
+
+## API Keys
+
+The API Keys page (`/dashboard/keys`) lets you manage the API keys used to authenticate requests to the checkout sessions API.
+
+### Creating a Key
+
+1. Enter a name for the key (e.g., "Production", "Development", "Mobile App")
+2. Click **Create Key**
+3. The full API key is displayed once in a green notice box. Copy it immediately — it will not be shown again after you dismiss the notice.
+
+### Revoking a Key
+
+Click **Revoke** next to any active key to invalidate it immediately. Revoked keys can no longer authenticate API requests. This action cannot be undone. Use this if a key is compromised or no longer needed.
+
+### Key States
+
+| State | Meaning |
+|---|---|
+| **Active** | The key is valid and can authenticate API requests. |
+| **Revoked** | The key has been permanently invalidated. |
+
+Keys are stored as SHA-256 hashes in the database. The plaintext key is never stored after creation.
+
+## Settings
+
+The Settings page (`/dashboard/settings`) lets you configure webhooks and manage your webhook signing secret.
+
+### Webhook URL
+
+Enter a URL where OpenCheckout should send event notifications. When a checkout session is completed, OpenCheckout POSTs a JSON payload to this URL with an `OpenCheckout-Signature` header for verification.
+
+Leave this field empty if you do not want webhook notifications. You can always rely on the redirect-based confirmation flow instead.
+
+### Webhook Secret
+
+The webhook secret is used to sign outgoing webhook requests with HMAC-SHA256. Your backend should use this secret to verify that webhook requests genuinely came from your OpenCheckout instance.
+
+Click **Regenerate** to create a new secret. The old secret stops working immediately. The new secret is displayed once — copy it and update your backend before dismissing the notice.
+
+### Verifying Webhooks
+
+When your backend receives a webhook, verify it using the shared secret:
+
+```
+signature = HMAC-SHA256(webhook_secret, timestamp + "." + payload)
+```
+
+Compare the result against the `v1` value in the `OpenCheckout-Signature` header using a constant-time comparison.
+
+Full details are in the [API Reference](/api-reference#webhooks) under Webhooks.
+
+## Navigation
+
+The top navigation bar uses pill-shaped tabs:
+
+- **Transactions** — the default view with your session history
+- **API Keys** — key management
+- **Settings** — webhook configuration
+
+The active tab is highlighted with a black background. The **Log out** button on the right ends your dashboard session by clearing the API key cookie.
+
+The navigation bar is sticky and remains visible as you scroll through transaction history.

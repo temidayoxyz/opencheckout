@@ -1,0 +1,171 @@
+---
+title: Architecture
+description: How OpenCheckout works internally — the payment orchestration engine, session lifecycle, and system components.
+---
+
+OpenCheckout is a Next.js application that orchestrates the [Open Payments](https://openpayments.dev) protocol. This page explains how the internal components work together to process a payment from session creation to completion.
+
+## System Components
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   OpenCheckout                       │
+│                                                      │
+│  ┌─────────────┐  ┌──────────────────┐              │
+│  │ Merchant    │  │ Customer         │              │
+│  │ API         │  │ Checkout UI      │              │
+│  │ /api/checkout│  │ /pay/:sessionId  │              │
+│  └──────┬──────┘  └────────┬─────────┘              │
+│         │                  │                         │
+│  ┌──────┴──────────────────┴─────────┐              │
+│  │       Checkout Engine             │              │
+│  │  ┌──────────┐  ┌───────────────┐ │              │
+│  │  │ Session  │  │ State Machine │ │              │
+│  │  │ Manager  │  │ open→complete │ │              │
+│  │  └──────────┘  └───────────────┘ │              │
+│  └──────┬───────────────────────────┘              │
+│         │                                           │
+│  ┌──────┴───────────────────────────┐              │
+│  │    Open Payments Orchestrator    │              │
+│  │  ┌────────┐ ┌───────┐ ┌───────┐ │              │
+│  │  │Incoming│ │Quote  │ │Outgoing│ │              │
+│  │  │Payment │ │       │ │Payment │ │              │
+│  │  └────────┘ └───────┘ └───────┘ │              │
+│  │  ┌────────┐ ┌─────────────────┐ │              │
+│  │  │ Grant  │ │ Hash            │ │              │
+│  │  │ Handler│ │ Verification    │ │              │
+│  │  └────────┘ └─────────────────┘ │              │
+│  └──────┬───────────────────────────┘              │
+│         │                                           │
+│  ┌──────┴──────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ SQLite DB   │  │ Webhook  │  │ Open Payments│  │
+│  │ (Drizzle)   │  │ Delivery │  │ SDK          │  │
+│  └─────────────┘  └──────────┘  └──────────────┘  │
+└──────────────────────────────────────────────────────┘
+```
+
+### Checkout Engine
+
+The checkout engine manages the lifecycle of every checkout session. It consists of:
+
+- **Session Manager** (`src/lib/checkout/sessions.ts`) — Creates, retrieves, and updates sessions in the database. Handles pagination, session expiry, and Open Payments reference tracking.
+- **State Machine** (`src/lib/checkout/state-machine.ts`) — Enforces valid state transitions. A session can only move from `open` to `completed`, `expired`, or `canceled`. Terminal states cannot be changed.
+- **Idempotency** (`src/lib/checkout/idempotency.ts`) — Stores SHA-256 hashes of `Idempotency-Key` headers. Duplicate requests within 24 hours return the cached response.
+
+### Open Payments Orchestrator
+
+The orchestrator (`src/lib/open-payments/`) wraps the `@interledger/open-payments` SDK and handles the full payment protocol flow:
+
+- **Wallet Address** (`wallet-address.ts`) — Resolves wallet address URLs to discover the associated authorization server and resource server.
+- **Incoming Payment** (`incoming-payment.ts`) — Requests an incoming payment grant from the merchant's authorization server, then creates an incoming payment resource on the merchant's wallet.
+- **Quote** (`quote.ts`) — Requests a quote grant from the customer's authorization server, then creates a quote resource to determine the payment cost.
+- **Grant** (`grant.ts`) — Handles the interactive GNAP grant flow for outgoing payments, including nonce generation and grant continuation.
+- **Outgoing Payment** (`outgoing-payment.ts`) — Creates an outgoing payment resource on the customer's wallet to issue the payment instruction.
+- **Hash Verification** (`hash-verification.ts`) — Verifies the SHA-256 interaction hash returned by the authorization server during the redirect callback.
+
+### Database
+
+OpenCheckout uses **SQLite** with WAL mode enabled for concurrent read performance. The schema is managed by **Drizzle ORM** and contains four tables:
+
+- `merchants` — merchant accounts with encrypted private keys
+- `api_keys` — SHA-256 hashed API keys for authentication
+- `checkout_sessions` — the core entity with session state, line items, and Open Payments references
+- `webhook_events` — delivery log for outbound webhook attempts
+
+No separate database server is required. The SQLite file is stored at the path configured by `DATABASE_URL`.
+
+### Webhook Delivery
+
+When a session completes, the webhook engine (`src/lib/webhook/deliver.ts`) POSTs a JSON payload to the merchant's configured webhook URL with an `OpenCheckout-Signature` header. Delivery is attempted up to 3 times with exponential backoff (1s, 2s, 4s delays).
+
+### Security Layer
+
+- **API key authentication** — all `/api/checkout` endpoints verify the `Authorization: Bearer sk_xxx` header against SHA-256 hashed keys in the database.
+- **Ed25519 request signing** — every Open Payments API call is signed with the merchant's Ed25519 private key using HTTP Message Signatures.
+- **AES-256-GCM encryption** — merchant private keys are encrypted at rest with a key derived from the `ENCRYPTION_KEY` environment variable using scrypt.
+- **Hash verification** — the interaction hash from the authorization server's redirect is verified to prevent forged callbacks.
+- **URL validation** — webhook URLs are validated to prevent Server-Side Request Forgery. Redirect URLs are validated to prevent open redirects.
+
+## Payment Flow — Step by Step
+
+### 1. Session Creation (Merchant API)
+
+```
+POST /api/checkout/sessions
+  → Authenticate API key
+  → Check idempotency key (if provided)
+  → Validate request body (Zod schema)
+  → Insert session row (status: "open")
+  → Return session with checkout URL
+```
+
+At this point, no Open Payments resources have been created. The session is just a database record waiting for a customer.
+
+### 2. Wallet Submission (Customer Action)
+
+```
+POST /pay/:sessionId/wallet
+  → Validate wallet address URL
+  → Resolve wallet address (discover auth/resource servers)
+  → STEP 1: Create incoming payment on merchant's wallet
+      → Request incoming payment grant from merchant's auth server
+      → Create incoming payment resource
+  → STEP 2: Create quote on customer's ASE
+      → Request quote grant from customer's auth server
+      → Create quote with incoming payment URL as receiver
+  → STEP 3: Request interactive outgoing payment grant
+      → Generate nonce for hash verification
+      → Request grant from customer's auth server with interact.finish
+  → Store all references (incoming payment URL, quote ID, grant tokens) in session
+  → Return interact redirect URL to frontend
+```
+
+### 3. Payment Approval (ASE Interaction)
+
+The customer is redirected to their authorization server's interact URL. They log in to their account, review the payment details, and approve. The authorization server redirects back to the OpenCheckout grant callback.
+
+### 4. Grant Callback (Payment Completion)
+
+```
+GET /pay/:sessionId/grant/callback?interact_ref=xxx&hash=xxx
+  → Verify interaction hash (defense-in-depth)
+  → Continue the grant with the interact_ref
+  → Obtain the finalized access token
+  → Create outgoing payment with quote ID
+  → Mark session as completed
+  → Fire webhook (background, non-blocking)
+  → Redirect to OpenCheckout success page
+```
+
+### 5. Success Page
+
+The OpenCheckout success page displays a confirmation with a countdown, then forwards the customer to the merchant's `success_url`.
+
+## State Machine
+
+```
+┌──────┐     completed    ┌───────────┐
+│ open │ ────────────────► │ completed │ (terminal)
+└──────┘                   └───────────┘
+   │
+   │  expired              ┌───────────┐
+   ├──────────────────────► │ expired   │ (terminal)
+   │                        └───────────┘
+   │
+   │  canceled             ┌───────────┐
+   └──────────────────────► │ canceled  │ (terminal)
+                            └───────────┘
+```
+
+A session starts as `open` and can transition to exactly one terminal state. Once terminal, no further transitions are allowed. Transitions are validated at the application level and enforced by the state machine module.
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 (App Router) with TypeScript |
+| Database | SQLite via better-sqlite3 with Drizzle ORM |
+| Payments | `@interledger/open-payments` SDK |
+| UI | React 19 with Tailwind CSS, Lucide icons |
+| Deployment | Docker with multi-stage Node.js build |
+| Documentation | Starlight (Astro) |

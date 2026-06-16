@@ -1,0 +1,204 @@
+---
+title: Deployment
+description: Deploy OpenCheckout to production — from server setup to HTTPS, DNS, and connecting your application.
+---
+
+This guide walks through deploying OpenCheckout to a production server, setting up HTTPS, and connecting it to your application. By the end, your checkout page will be live at a public URL and your backend will be able to create checkout sessions.
+
+OpenCheckout is framework-agnostic and language-agnostic — your main application can be written in any language and use any framework. It communicates with OpenCheckout over standard HTTPS REST calls.
+
+## End-to-End Production Flow
+
+### Step 1: Get a Server
+
+Any Linux server with at least 512MB RAM and Docker installed. A $6/month VPS from any provider works.
+
+### Step 2: Point a Domain
+
+Create a DNS A record pointing your checkout subdomain to the server's IP address:
+
+```
+pay.yourstore.com  →  1.2.3.4
+```
+
+The `BASE_URL` environment variable must match this domain exactly.
+
+### Step 3: Deploy OpenCheckout
+
+```bash
+# SSH into your server
+ssh user@1.2.3.4
+
+# Clone and deploy
+git clone https://github.com/temidayoxyz/opencheckout
+cd opencheckout
+
+# Generate a secure encryption key
+echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" > .env
+echo "BASE_URL=https://pay.yourstore.com" >> .env
+
+# Run the setup wizard to create your merchant account
+npm run setup
+
+# Start with Docker
+docker compose up -d
+```
+
+OpenCheckout is now running on port `3080` inside the container, mapped to `3080` on the host.
+
+### Step 4: Install a Reverse Proxy
+
+OpenCheckout must be served over HTTPS. Wallet addresses require HTTPS by protocol specification. Use Caddy, Nginx, or any reverse proxy that terminates TLS.
+
+**Using Caddy** (simplest — automatic HTTPS):
+
+```bash
+# Install Caddy, then create /etc/caddy/Caddyfile:
+pay.yourstore.com {
+    reverse_proxy localhost:3080
+}
+```
+
+**Using Nginx with Let's Encrypt:**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name pay.yourstore.com;
+
+    ssl_certificate     /etc/letsencrypt/live/pay.yourstore.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/pay.yourstore.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+
+server {
+    listen 80;
+    server_name pay.yourstore.com;
+    return 301 https://$host$request_uri;
+}
+```
+
+### Step 5: Verify
+
+Visit `https://pay.yourstore.com` — you should see the OpenCheckout landing page.
+
+Visit `https://pay.yourstore.com/dashboard` and sign in with your API key to verify the dashboard works.
+
+### Step 6: Connect Your Application
+
+Your main application (written in any language, any framework) uses OpenCheckout by making HTTP requests to the checkout sessions API:
+
+```
+POST https://pay.yourstore.com/api/checkout/sessions
+Authorization: Bearer sk_YOUR_API_KEY
+Content-Type: application/json
+Idempotency-Key: order-789-unique
+
+{
+  "mode": "payment",
+  "line_items": [...],
+  "success_url": "https://yourstore.com/order/789/success",
+  "cancel_url": "https://yourstore.com/order/789/cart",
+  "metadata": { "order_id": "789" }
+}
+```
+
+The response includes `url` — redirect your customer there. That is the entire integration.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `ENCRYPTION_KEY` | Yes | 64-character hex string. Encrypts private keys in the database. Generate with `openssl rand -hex 32`. Store securely. |
+| `BASE_URL` | Yes | Full public URL of your OpenCheckout instance, including `https://`. Used for ASE redirect callbacks. Must match your domain. |
+| `DATABASE_URL` | No | Path to the SQLite database file. Defaults to `data/opencheckout.db`. |
+
+## Docker Compose Configuration
+
+The default `docker-compose.yml`:
+
+```yaml
+services:
+  opencheckout:
+    build: .
+    ports:
+      - "3080:3080"
+    environment:
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - BASE_URL=${BASE_URL:-http://localhost:3080}
+      - DATABASE_URL=data/opencheckout.db
+    volumes:
+      - opencheckout_data:/app/data
+
+volumes:
+  opencheckout_data:
+```
+
+The named volume `opencheckout_data` persists the database across container restarts and upgrades.
+
+## Database
+
+OpenCheckout uses **SQLite** by default. The database is a single file — no separate database server, no connection strings, no network configuration. This is intentional: self-hosted software should be simple to operate.
+
+### Backups
+
+```bash
+# Direct file copy
+cp data/opencheckout.db "data/backup-$(date +%Y%m%d).db"
+
+# From Docker
+docker compose exec opencheckout cp data/opencheckout.db data/backup.db
+```
+
+For continuous backup, [Litestream](https://litestream.io) replicates the SQLite WAL to S3-compatible storage in real time.
+
+### Database Portability
+
+OpenCheckout uses [Drizzle ORM](https://orm.drizzle.team) for database access. The schema is defined in `src/lib/db/schema.ts` and is portable across Drizzle's supported dialects. SQLite is the default and recommended choice for self-hosted deployments. PostgreSQL and MySQL are supported by Drizzle but not yet configured in OpenCheckout — if you need horizontal scaling or multi-server deployments, the migration path exists and requires swapping the connection adapter.
+
+If you outgrow SQLite, migrating to PostgreSQL is straightforward because the schema definitions are dialect-agnostic.
+
+## Framework and Language Compatibility
+
+OpenCheckout is **framework-agnostic and language-agnostic** for integrators. Your main application talks to OpenCheckout over HTTPS using REST calls. This means:
+
+- **Any backend language** — PHP, Python, Ruby, Go, Rust, Java, .NET, Node.js, Elixir, or anything that makes HTTP requests
+- **Any framework** — Laravel, Django, Rails, Express, Spring, Phoenix, or no framework at all
+- **Any frontend** — React, Vue, Svelte, HTMX, server-rendered HTML, or static sites
+
+Your application never imports an OpenCheckout library. The only integration is an HTTP POST to create a session and an HTTP redirect to the checkout page.
+
+For the Open Payments protocol itself, language-specific SDKs are available if you ever need to interact with wallet addresses or the Open Payments API directly, but OpenCheckout handles all of this for you.
+
+## Security Checklist
+
+- Serve exclusively over HTTPS. Wallet addresses require it and the Open Payments protocol enforces it.
+- Store `ENCRYPTION_KEY` securely. If lost, merchant private keys become unrecoverable.
+- Rotate API keys from the dashboard. Revoke compromised keys immediately.
+- Keep `BASE_URL` accurate. It is used for authorization server redirect callbacks and must match your public domain.
+- Place OpenCheckout behind a reverse proxy. Do not expose it directly to the internet.
+- Restrict database file permissions. Only the OpenCheckout process should read `data/opencheckout.db`.
+
+## Updating
+
+To update to a newer version:
+
+```bash
+# Docker
+git pull
+docker compose up -d --build
+
+# Manual
+git pull
+npm ci
+npm run build
+npm start
+```
+
+Database migrations are applied automatically when the Open Payments SDK is updated. For schema changes to the OpenCheckout tables, run the Drizzle migration commands included in the release notes.

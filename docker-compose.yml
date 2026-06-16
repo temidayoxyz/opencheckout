@@ -1,0 +1,14 @@
+services:
+  opencheckout:
+    build: .
+    ports:
+      - "3080:3080"
+    environment:
+      - DATABASE_URL=data/opencheckout.db
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - BASE_URL=${BASE_URL:-http://localhost:3080}
+    volumes:
+      - opencheckout_data:/app/data
+
+volumes:
+  opencheckout_data:

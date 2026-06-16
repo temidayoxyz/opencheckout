@@ -1,26 +1,122 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ============================================================
+   OpenCheckout Design System — inspired by Figma marketing
+   Monochrome core + pasted color-block sections + pill CTAs
+   ============================================================ */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* === Brand & Accent === */
+  --color-primary: #000000;
+  --color-on-primary: #ffffff;
+  --color-accent-magenta: #eb4c8e;
+
+  /* === Surface === */
+  --color-canvas: #ffffff;
+  --color-inverse-canvas: #000000;
+  --color-surface-soft: #f5f5f5;
+
+  /* === Borders === */
+  --color-hairline: #e5e5e5;
+  --color-hairline-soft: #f0f0f0;
+
+  /* === Color Blocks (signature pastel palette) === */
+  --color-block-lime: #e9f5e4;
+  --color-block-lilac: #ede3f0;
+  --color-block-cream: #faf6ee;
+  --color-block-mint: #e2f3ee;
+  --color-block-pink: #fae8ee;
+  --color-block-coral: #fde8e3;
+  --color-block-navy: #1a1d28;
+
+  /* === Text === */
+  --color-ink: #000000;
+  --color-ink-soft: #4d4d4d;
+  --color-inverse-ink: #ffffff;
+  --color-on-inverse-soft: rgba(255, 255, 255, 0.16);
+
+  /* === Semantic === */
+  --color-success: #0d9e53;
+
+  /* === Typography === */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* === Border Radius === */
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --radius-pill: 50px;
+  --radius-full: 9999px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Geist variable weight mappings (closest to figmaSans weights) */
+/* 320→300, 330→400, 340→400, 450→500, 480→500, 540→600, 700→700 */
+/* Weight, not opacity, carries hierarchy — no mid-gray text */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Pill button — the only CTA shape */
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  padding: 10px 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+}
+
+.btn-secondary {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  padding: 8px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+}
+.btn-secondary:hover {
+  opacity: 0.7;
+}
+
+/* Color-block section — the defining surface */
+.color-block {
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xxl, 48px);
+}
+.color-block-lime { background: var(--color-block-lime); }
+.color-block-lilac { background: var(--color-block-lilac); }
+.color-block-cream { background: var(--color-block-cream); }
+.color-block-mint { background: var(--color-block-mint); }
+.color-block-pink { background: var(--color-block-pink); }
+.color-block-coral { background: var(--color-block-coral); }
+.color-block-navy { background: var(--color-block-navy); color: var(--color-inverse-ink); }
+
+/* Hairline card — elevation replaced by border */
+.card-hairline {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-lg);
+}
+
+/* Section spacing — 96px gaps between major blocks */
+.section-gap {
+  padding-top: 96px;
+  padding-bottom: 96px;
 }

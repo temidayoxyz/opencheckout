@@ -1,0 +1,128 @@
+---
+title: FAQ
+description: Frequently asked questions about OpenCheckout.
+---
+
+## General
+
+### What is OpenCheckout?
+
+OpenCheckout is an open-source, self-hosted checkout system. It provides a hosted payment page and a Stripe-compatible API that you run on your own server. Customers pay using their Open Payments wallet address instead of entering credit card details.
+
+### How is this different from Stripe or PayPal?
+
+Stripe and PayPal are platform-hosted payment processors. They charge a percentage of every transaction (typically 2.9% + $0.30), own your payment data, and require customers to use card-based payment methods. OpenCheckout is self-hosted software — you deploy it on your infrastructure, you own your data, and there are no per-transaction fees. Payments flow through the Open Payments protocol instead of through a proprietary processor.
+
+### Does OpenCheckout move money?
+
+No. OpenCheckout issues payment instructions via the Open Payments protocol. The actual movement of funds between the customer's account and the merchant's account is handled by the account servicing entities (banks, wallet providers) over their settlement rails. OpenCheckout does not touch funds, hold balances, or require a money transmitter license.
+
+### What is a wallet address?
+
+A wallet address is a URL that identifies an Open Payments-enabled account. For example: `https://ilp.interledger-test.dev/alice`. It serves as both an account identifier and a service endpoint — you can make an HTTP GET request to a wallet address to discover the associated authorization server, resource server, supported currency, and public keys.
+
+### Do my customers need to create a new account?
+
+Your customers need an Open Payments-enabled wallet address. This could be their existing bank account (if their bank implements Open Payments), a digital wallet they already use, or a mobile money account. As Open Payments adoption grows among account providers, more of your customers will already have compatible wallet addresses.
+
+### What currencies are supported?
+
+Any currency supported by the customer's and merchant's account providers. Open Payments represents amounts using ISO 4217 asset codes and an integer-based value format. The protocol supports cross-currency payments — the customer can pay in their currency and the merchant receives in theirs, with the account providers handling conversion.
+
+## Setup and Configuration
+
+### How do I get a wallet address for testing?
+
+The Interledger test network at [wallet.interledger-test.dev](https://wallet.interledger-test.dev) provides free wallets with play money. Create an account, complete the verification steps, create a wallet, and generate developer keys. The full process takes about 5 minutes and is detailed in the [Getting Started](/getting-started) guide.
+
+### Can I use OpenCheckout without Docker?
+
+Yes. Install dependencies with `npm install`, build with `npm run build`, and start with `npm start`. Docker is recommended for production but not required.
+
+### What database does OpenCheckout use?
+
+SQLite. The database is a single file stored at the path configured by `DATABASE_URL`. No separate database server is required. WAL mode is enabled for concurrent read performance. For backup, you can copy the file or use Litestream for continuous replication to cloud storage.
+
+### How do I back up my data?
+
+The SQLite database is a single file. Back it up by copying:
+
+```bash
+cp data/opencheckout.db "data/backup-$(date +%Y%m%d).db"
+```
+
+For continuous backup, use [Litestream](https://litestream.io) to replicate to S3-compatible storage.
+
+### What happens if I lose my ENCRYPTION_KEY?
+
+Your merchant private keys are encrypted with the `ENCRYPTION_KEY` using AES-256-GCM. If you lose this key, you cannot decrypt the private keys stored in the database. You would need to re-run the setup wizard with a new encryption key and re-add your merchant wallet credentials.
+
+### Can I run multiple merchants on one instance?
+
+Currently, OpenCheckout supports one merchant per instance. The setup wizard creates a single merchant record. Multi-merchant support is planned for a future release.
+
+## API and Integration
+
+### Is the API really Stripe-compatible?
+
+The checkout sessions API (`POST /api/checkout/sessions`) follows the Stripe Checkout Sessions API shape — same endpoint structure, same field names, same response format, and same idempotency header behavior. Existing Stripe integrations can be adapted with minimal changes. The full list of differences is documented in the [API Reference](/api-reference).
+
+### How does idempotency work?
+
+Pass an `Idempotency-Key` header with a unique value for each checkout session creation request. If a request with the same key is retried (e.g., due to a network error), OpenCheckout returns the original response instead of creating a duplicate session. Keys expire after 24 hours.
+
+### Can I customize the checkout page appearance?
+
+The checkout page uses your merchant name and displays your line items. Custom branding (logo, colors) is available through the merchant settings. The "Secured by OpenCheckout" badge is always displayed as a trust signal.
+
+### How do I handle a payment where the customer closed their browser during approval?
+
+If a customer closes their browser after being redirected to their authorization server but before the redirect back completes, the session remains in `open` status with a pending grant. When the customer revisits the checkout page, they will see a **Check Payment Status** button. If they already approved the payment at their provider, clicking this button recovers the session.
+
+### What webhook events are sent?
+
+Currently, `checkout.session.completed` is sent when a payment completes successfully. The payload includes the session ID, status, amount, currency, metadata, outgoing payment URL, and customer wallet address. Additional event types are planned.
+
+### What happens if a webhook delivery fails?
+
+Webhooks are retried up to 3 times with exponential backoff (1 second, 2 seconds, 4 seconds). If all attempts fail, the event is recorded in the database. The delivery status is visible in the webhook events log.
+
+## Protocol and Standards
+
+### What is Open Payments?
+
+[Open Payments](https://openpayments.dev) is an open API standard maintained by the Interledger Foundation. It defines a set of REST APIs that account servicing entities (banks, digital wallet providers, mobile money providers) can implement to enable interoperable payments. The standard uses the GNAP authorization protocol and HTTP Message Signatures for security.
+
+### What is GNAP?
+
+The Grant Negotiation and Authorization Protocol (GNAP) is the successor to OAuth 2.0, designed specifically for financial use cases. It allows clients to request fine-grained access to protected resources with user consent. Open Payments uses GNAP for its authorization layer.
+
+### What is Interledger?
+
+[Interledger](https://interledger.org) is an open protocol for routing payments across different payment networks. It is the primary settlement rail used by Open Payments implementations. When a customer pays with ILP as the payment method, the sender's and recipient's account providers exchange ILP packets over a STREAM connection to settle the payment.
+
+### Does OpenCheckout require Interledger?
+
+OpenCheckout uses the Open Payments protocol, which abstracts the underlying payment method. Currently, Interledger (ILP) is the primary integrated payment method in the Open Payments ecosystem. As other payment methods become available through Open Payments, OpenCheckout will support them automatically through the protocol abstraction.
+
+## Deployment
+
+### What are the minimum server requirements?
+
+OpenCheckout runs on any Linux server with Node.js 22+ and 512MB RAM. The SQLite database adds negligible overhead. For production, 1GB RAM and 10GB disk is recommended.
+
+### Can I deploy to a serverless platform?
+
+No. OpenCheckout is designed as a long-running server with a persistent SQLite database. Serverless platforms do not support the persistent filesystem required for SQLite.
+
+### How do I set up HTTPS?
+
+Place OpenCheckout behind a reverse proxy (Nginx, Caddy, or similar) that terminates TLS. The `BASE_URL` environment variable must be set to your HTTPS domain. Wallet addresses require HTTPS — the Open Payments protocol enforces this.
+
+### Can I deploy to multiple servers?
+
+The default SQLite setup is designed for single-server deployment. For multi-server deployments, you would need to migrate to PostgreSQL. Drizzle ORM supports both SQLite and PostgreSQL, making migration straightforward.
+
+### How do I update OpenCheckout?
+
+Pull the latest Docker image or Git changes, apply any database migrations, and restart. Database migrations are applied automatically during startup in newer versions.

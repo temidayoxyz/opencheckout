@@ -1,7 +1,39 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --turbopack --use-npm)"
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --no-import-alias --turbopack --use-npm)",
+      "Bash(npm install:*)",
+      "Bash(npx drizzle-kit:*)",
+      "Bash(npm view:*)",
+      "Bash(node -e \"const op = require\\('@interledger/open-payments'\\); console.log\\(Object.keys\\(op\\)\\)\")",
+      "Bash(node -e ':*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s -X POST http://localhost:3080/api/checkout/sessions -H 'Authorization: Bearer sk_YiHMPGeH26RVNU9Elho8AfDTC1FFFCr17RQqXRrEDqw' -H 'Content-Type: application/json' -d '{\"mode\":\"payment\",\"line_items\":[{\"price_data\":{\"currency\":\"usd\",\"product_data\":{\"name\":\"Test Item\"},\"unit_amount\":1000},\"quantity\":1}],\"success_url\":\"https://example.com/success?session_id={CHECKOUT_SESSION_ID}\",\"cancel_url\":\"https://example.com/cancel\"}')",
+      "Bash(curl:*)",
+      "Read(//c/ROOT/**)",
+      "Read(//c/root/**)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\(0,'utf8'\\); const s=JSON.parse\\(d\\); console.log\\('Status:', s.status\\); console.log\\('Incoming Payment:', s.incomingPaymentUrl || 'NOT SET'\\); console.log\\('Quote ID:', s.quoteId || 'NOT SET'\\); console.log\\('Customer Wallet:', s.customerWallet || 'NOT SET'\\); console.log\\('Continue URI:', s.continueUri ? 'SET' : 'NOT SET'\\);\")",
+      "Bash(taskkill /PID 9892 /F)",
+      "Bash(taskkill /F /FI \"IMAGENAME eq node.exe\")",
+      "Bash(cmd:*)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(nslookup ilp.interledger-test.dev)",
+      "Bash(node -e \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); console.log\\('Metadata:', JSON.stringify\\(d.metadata, null, 2\\)\\); console.log\\('Description:', d.metadata?.description || 'NOT IN METADATA'\\);\")",
+      "Bash(npx astro:*)",
+      "Bash(mkdir -p introduction)",
+      "Bash(mv index.mdx introduction/index.mdx)",
+      "Bash(mkdir -p getting-started api-reference integration-guide deployment)",
+      "Bash(mv getting-started.mdx getting-started/index.mdx)",
+      "Bash(mv api-reference.mdx api-reference/index.mdx)",
+      "Bash(mv integration-guide.mdx integration-guide/index.mdx)",
+      "Bash(mv deployment.mdx deployment/index.mdx)",
+      "Bash(rm -rf .astro dist)",
+      "Bash(mv src/content/docs/api-reference/index.mdx src/content/docs/api-reference.mdx)",
+      "Bash(mv src/content/docs/deployment/index.mdx src/content/docs/deployment.mdx)",
+      "Bash(mv src/content/docs/getting-started/index.mdx src/content/docs/getting-started.mdx)",
+      "Bash(mv src/content/docs/integration-guide/index.mdx src/content/docs/integration-guide.mdx)",
+      "Bash(./node_modules/.bin/astro build:*)"
     ]
   }
 }

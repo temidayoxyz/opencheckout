@@ -1,0 +1,145 @@
+---
+title: Integration Guide
+description: Integrate OpenCheckout into your website or application.
+---
+
+## Basic Integration
+
+### 1. Backend: Create a session
+
+When a customer wants to check out, your backend creates a session via the OpenCheckout API:
+
+```javascript
+// Node.js example
+const response = await fetch("https://checkout.yourdomain.com/api/checkout/sessions", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.OPENCHECKOUT_API_KEY}`,
+    "Content-Type": "application/json",
+    "Idempotency-Key": orderId, // Prevent duplicates
+  },
+  body: JSON.stringify({
+    mode: "payment",
+    line_items: cart.items.map(item => ({
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name: item.name,
+          description: item.description,
+        },
+        unit_amount: item.price_cents,
+      },
+      quantity: item.quantity,
+    })),
+    success_url: `https://yourstore.com/orders/${orderId}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: "https://yourstore.com/cart",
+    metadata: { order_id: orderId },
+  }),
+});
+
+const session = await response.json();
+// Redirect customer to session.url
+res.redirect(session.url);
+```
+
+### 2. Frontend: Redirect to checkout
+
+```html
+<a href="{{ session.url }}">Proceed to Checkout</a>
+```
+
+### 3. Backend: Handle success
+
+When the customer returns to your `success_url`, verify the session:
+
+```javascript
+// On your success page
+const sessionId = new URL(req.url).searchParams.get("session_id");
+const response = await fetch(
+  `https://checkout.yourdomain.com/api/checkout/sessions/${sessionId}`,
+  { headers: { Authorization: `Bearer ${process.env.OPENCHECKOUT_API_KEY}` } }
+);
+const session = await response.json();
+
+if (session.status === "completed") {
+  // Fulfill order
+}
+```
+
+### 4. Backend: Listen for webhooks (recommended)
+
+For reliability, also listen for webhooks — the redirect might not arrive:
+
+```javascript
+app.post("/webhooks/opencheckout", (req, res) => {
+  const signature = req.headers["opencheckout-signature"];
+  // Verify signature using your webhook secret
+  // See API Reference for verification details
+
+  const event = req.body;
+  if (event.status === "completed") {
+    // Fulfill order referenced in event.metadata.order_id
+  }
+
+  res.sendStatus(200);
+});
+```
+
+## Use Cases
+
+### eCommerce
+
+The `payment` mode handles one-time purchases. Create a session with line items, redirect the customer, and fulfill on completion.
+
+### Donations
+
+Use `donation` mode without an `incomingAmount` to accept open-ended contributions:
+
+```json
+{
+  "mode": "donation",
+  "line_items": [{
+    "price_data": {
+      "currency": "usd",
+      "product_data": { "name": "Donation" },
+      "unit_amount": 100
+    },
+    "quantity": 1
+  }]
+}
+```
+
+### Subscriptions
+
+Use `subscription` mode with a recurring interval in the grant request:
+
+```json
+{
+  "mode": "subscription",
+  "line_items": [{
+    "price_data": {
+      "currency": "usd",
+      "product_data": { "name": "Monthly Plan" },
+      "unit_amount": 999
+    },
+    "quantity": 1
+  }]
+}
+```
+
+### Marketplaces
+
+For marketplace scenarios where you split payments:
+
+1. Buyer pays your marketplace wallet
+2. Your backend creates outgoing payments to each seller
+3. Each seller receives funds through their own OpenCheckout instance or wallet
+
+## Error Handling
+
+| HTTP Status | Type | Meaning |
+|---|---|---|
+| 401 | `authentication_error` | Invalid or missing API key |
+| 400 | `invalid_request_error` | Malformed request body |
+| 404 | `not_found` | Session not found |
+| 500 | `api_error` | Server error — retry |

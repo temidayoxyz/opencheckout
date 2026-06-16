@@ -1,65 +1,148 @@
-import Image from "next/image";
+import { ArrowRight, Code, Globe, Shield, Zap } from "lucide-react";
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-canvas">
+      {/* Hero — white canvas + oversized display type */}
+      <section className="max-w-[1280px] mx-auto px-6 pt-32 pb-20 text-center">
+        <h1 className="text-[64px] font-[340] tracking-[-0.96px] leading-[1.1] text-ink">
+          OpenCheckout
+        </h1>
+        <p className="mt-6 text-[26px] font-[340] tracking-[-0.26px] leading-snug text-ink-soft max-w-[640px] mx-auto">
+          Open-source, self-hosted checkout. Accept payments via the Open
+          Payments protocol.
+        </p>
+        <div className="mt-10 flex items-center justify-center gap-4">
+          <a
+            href="https://github.com/opencheckout/opencheckout"
+            className="btn-primary text-lg py-3.5 px-8"
+          >
+            Get started for free
+            <ArrowRight className="w-5 h-5" />
+          </a>
+          <a
+            href="https://openpayments.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary text-lg py-3 px-8"
+          >
+            Learn about Open Payments
+          </a>
+        </div>
+      </section>
+
+      {/* Quick Start code block — cream color block */}
+      <div className="max-w-[1280px] mx-auto px-6 pb-24">
+        <div className="color-block color-block-cream">
+          <p className="font-mono text-xs uppercase tracking-[0.6px] text-ink-soft mb-4">
+            Quick Start
+          </p>
+          <pre className="bg-canvas rounded-lg p-6 text-base font-mono text-ink leading-relaxed overflow-x-auto border border-hairline">
+            {`POST /api/checkout/sessions
+Authorization: Bearer sk_xxx
+
+{
+  "mode": "payment",
+  "line_items": [{
+    "price_data": {
+      "currency": "usd",
+      "product_data": { "name": "T-shirt" },
+      "unit_amount": 2000
+    },
+    "quantity": 1
+  }],
+  "success_url": "https://example.com/success",
+  "cancel_url": "https://example.com/cancel"
+}`}
+          </pre>
+          <p className="mt-4 text-sm text-ink-soft font-[320]">
+            Stripe-compatible Checkout Sessions API. No third-party fees. No
+            vendor lock-in.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      {/* Features — three across */}
+      <section className="max-w-[1280px] mx-auto px-6 pb-32">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            {
+              icon: Globe,
+              title: "Wallet Agnostic",
+              body: "Works with any Open Payments-enabled bank, digital wallet, or mobile money provider.",
+            },
+            {
+              icon: Shield,
+              title: "Secured by OpenCheckout",
+              body: "Ed25519 signatures on every request. AES-256 encrypted private keys at rest.",
+            },
+            {
+              icon: Code,
+              title: "Stripe-Compatible API",
+              body: "Drop-in replacement. Same checkout sessions API your developers already know.",
+            },
+          ].map(({ icon: Icon, title, body }) => (
+            <div key={title} className="feature-tile bg-surface-soft rounded-2xl p-6">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-canvas mb-5">
+                <Icon className="w-6 h-6 text-ink" />
+              </div>
+              <h3 className="text-xl font-[600] text-ink mb-2">{title}</h3>
+              <p className="text-base font-[320] text-ink-soft leading-relaxed">
+                {body}
+              </p>
+            </div>
+          ))}
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Deploy — lime color block */}
+      <div className="max-w-[1280px] mx-auto px-6 pb-32">
+        <div className="color-block color-block-lime text-center">
+          <p className="font-mono text-xs uppercase tracking-[0.6px] text-ink-soft mb-4">
+            Deploy
+          </p>
+          <h2 className="text-[32px] font-[600] tracking-[-0.4px] leading-tight text-ink mb-4">
+            One command to production
+          </h2>
+          <p className="text-lg font-[320] text-ink-soft mb-6 max-w-[480px] mx-auto">
+            Self-host on your own infrastructure. No external services required.
+          </p>
+          <pre className="inline-block bg-canvas rounded-lg px-6 py-4 text-base font-mono text-ink border border-hairline">
+            docker compose up -d
+          </pre>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-inverse-canvas text-inverse-ink py-16 px-6">
+        <div className="max-w-[1280px] mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+              <span className="text-lg font-[600]">OpenCheckout</span>
+              <p className="text-sm text-on-inverse-soft mt-2 font-[320]">
+                Open-source, self-hosted checkout.
+              </p>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-on-inverse-soft font-[320]">
+              <a
+                href="https://openpayments.dev"
+                className="hover:text-inverse-ink transition-colors"
+              >
+                Open Payments
+              </a>
+              <span className="text-on-inverse-soft">·</span>
+              <a
+                href="https://github.com/opencheckout/opencheckout"
+                className="hover:text-inverse-ink transition-colors"
+              >
+                GitHub
+              </a>
+              <span className="text-on-inverse-soft">·</span>
+              <span>Secured by OpenCheckout</span>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </main>
   );
 }

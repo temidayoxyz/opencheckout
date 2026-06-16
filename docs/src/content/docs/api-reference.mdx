@@ -1,0 +1,145 @@
+---
+title: API Reference
+description: Complete reference for the OpenCheckout API.
+---
+
+OpenCheckout provides a [Stripe-compatible Checkout Sessions API](https://docs.stripe.com/api/checkout/sessions).
+
+## Authentication
+
+All API requests require an API key:
+
+```
+Authorization: Bearer sk_YOUR_API_KEY
+```
+
+Manage keys from the dashboard at `/dashboard/keys`.
+
+## Idempotency
+
+Pass an `Idempotency-Key` header to prevent duplicate session creation:
+
+```
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
+```
+
+Keys expire after 24 hours.
+
+## Endpoints
+
+### POST /api/checkout/sessions
+
+Create a new checkout session.
+
+**Request Body:**
+
+```json
+{
+  "mode": "payment",
+  "line_items": [
+    {
+      "price_data": {
+        "currency": "usd",
+        "product_data": {
+          "name": "Product name",
+          "description": "Optional description"
+        },
+        "unit_amount": 2000
+      },
+      "quantity": 1
+    }
+  ],
+  "success_url": "https://example.com/success?session_id={CHECKOUT_SESSION_ID}",
+  "cancel_url": "https://example.com/cancel",
+  "metadata": {
+    "order_id": "123"
+  },
+  "expires_in_seconds": 86400
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `mode` | string | Yes | `payment`, `subscription`, or `donation` |
+| `line_items` | array | Yes | 1–100 items |
+| `line_items[].price_data.currency` | string | Yes | ISO 4217 (3 letters, lowercase) |
+| `line_items[].price_data.product_data.name` | string | Yes | Product name (1–200 chars) |
+| `line_items[].price_data.product_data.description` | string | No | Product description |
+| `line_items[].price_data.unit_amount` | integer | Yes | Price in smallest currency unit (cents) |
+| `line_items[].quantity` | integer | No | Default: 1 |
+| `success_url` | string | Yes | Redirect URL on success |
+| `cancel_url` | string | Yes | Redirect URL on cancel |
+| `metadata` | object | No | Arbitrary key-value pairs |
+| `expires_in_seconds` | integer | No | 300–86400 (default: 86400) |
+
+Use `{CHECKOUT_SESSION_ID}` in URLs — it's replaced with the actual session ID.
+
+**Response (201):**
+
+```json
+{
+  "id": "cs_abc123xyz",
+  "status": "open",
+  "url": "https://checkout.yourdomain.com/pay/cs_abc123xyz",
+  "amount_total": 2000,
+  "currency": "usd",
+  "mode": "payment",
+  "success_url": "https://example.com/success?session_id=cs_abc123xyz",
+  "cancel_url": "https://example.com/cancel",
+  "expires_at": "2026-06-16T00:00:00Z",
+  "created_at": "2026-06-15T00:00:00Z"
+}
+```
+
+### GET /api/checkout/sessions/:id
+
+Retrieve a checkout session.
+
+**Response:** The full session object with `status`, payment references, and metadata.
+
+### GET /api/checkout/sessions
+
+List sessions (paginated).
+
+| Query Param | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | 10 | Max 100 |
+| `cursor` | string | - | Pagination cursor |
+
+### POST /api/checkout/sessions/:id/expire
+
+Expire an open session.
+
+## Webhooks
+
+Configure a webhook URL in your merchant settings. OpenCheckout sends `POST` requests with:
+
+**Headers:**
+```
+Content-Type: application/json
+OpenCheckout-Signature: t=1234567890,v1=abc123...
+```
+
+**Body:**
+```json
+{
+  "id": "cs_abc123xyz",
+  "status": "completed",
+  "amount_total": 2000,
+  "currency": "usd",
+  "metadata": { "order_id": "123" },
+  "outgoing_payment": "https://...",
+  "customer_wallet": "https://..."
+}
+```
+
+Verify the signature using HMAC-SHA256 with your webhook secret:
+
+```
+payload = timestamp + "." + JSON.stringify(body)
+signature = HMAC-SHA256(webhook_secret, payload)
+```
+
+## GET /api/health
+
+Health check endpoint. Returns server status and uptime.

@@ -1,0 +1,157 @@
+---
+title: Security
+description: How OpenCheckout secures API keys, private keys, webhooks, requests, and redirects.
+---
+
+OpenCheckout is designed to handle financial payment instructions. Security is not optional. This page documents every security mechanism in the system.
+
+## API Key Authentication
+
+All checkout API endpoints (`/api/checkout/*`) require a valid API key passed as a Bearer token in the `Authorization` header:
+
+```
+Authorization: Bearer sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### Key Storage
+
+API keys are never stored in plaintext. When a key is created, it is immediately hashed with SHA-256:
+
+```
+stored_hash = SHA-256(plaintext_key)
+```
+
+When a request arrives, the provided key is hashed and compared against the stored hash. The plaintext key exists only in memory during the comparison and is never logged or persisted.
+
+### Key Lifecycle
+
+- Keys can be created from the dashboard at `/dashboard/keys`
+- Active keys authenticate API requests
+- Revoked keys are permanently invalidated
+- Revocation is immediate and irreversible
+
+## Private Key Encryption
+
+Each merchant has an Ed25519 private key used to sign Open Payments API requests. This key is encrypted at rest in the database using AES-256-GCM.
+
+### Encryption Scheme
+
+```
+1. Master key = 32 bytes from ENCRYPTION_KEY environment variable
+2. For each merchant private key:
+   - Generate random 32-byte salt
+   - Generate random 16-byte IV
+   - Derive encryption key = scrypt(master_key, salt, key_length=32)
+   - Encrypt private key with AES-256-GCM
+   - Store: base64(salt + iv + auth_tag + ciphertext)
+```
+
+### Key Management
+
+- The `ENCRYPTION_KEY` environment variable must be a 64-character hex string (32 bytes)
+- Generate it with: `openssl rand -hex 32`
+- Store it securely. If lost, all merchant private keys become unrecoverable
+- Rotate by re-running the setup wizard with a new key
+
+## HTTP Message Signatures
+
+Every request to the Open Payments API is signed using HTTP Message Signatures (RFC 9421) with the Ed25519 variant of EdDSA.
+
+### What Gets Signed
+
+The signature covers:
+- Request method (`@method`)
+- Request URL (`@target-uri`)
+- Content-Type header
+- Content-Digest header (SHA-512 of the request body)
+- Authorization header
+- Content-Length header
+
+### Key Binding
+
+The merchant's public key is registered at their wallet address's JWKS endpoint (`{wallet_address}/jwks.json`). When an authorization server receives a signed request, it:
+
+1. Extracts the `keyId` from the `Signature-Input` header
+2. Fetches the public key from the client's JWKS endpoint
+3. Verifies the signature against the covered components
+
+This binds the client to the grant and prevents request tampering.
+
+## Webhook Signatures
+
+Outgoing webhooks are signed with HMAC-SHA256. Each webhook request includes an `OpenCheckout-Signature` header:
+
+```
+OpenCheckout-Signature: t=1718400000,v1=abc123def456...
+```
+
+### Verification
+
+To verify a webhook on your backend:
+
+```
+1. Extract the timestamp (t=) and signature (v1=) from the header
+2. Compute: expected = HMAC-SHA256(webhook_secret, timestamp + "." + payload)
+3. Compare expected against the v1 signature using constant-time comparison
+4. Optionally reject timestamps older than 5 minutes to prevent replay attacks
+```
+
+### Secret Management
+
+- The webhook secret is a 32-byte random value, generated with `crypto.randomBytes()`
+- It is stored in the database and never exposed in API responses — only a masked prefix is shown
+- Regenerate from the dashboard at `/dashboard/settings`
+
+## Redirect Security
+
+### Open Redirect Prevention
+
+Every redirect URL is validated before use:
+
+- Must use `http:` or `https:` protocol (blocks `javascript:`, `data:`, `file:`)
+- Must parse as a valid URL
+- `success_url` and `cancel_url` are validated at session creation via Zod's `.url()` check
+- The success page performs an additional protocol check before executing `window.location.href`
+
+### Interaction Hash Verification
+
+When the customer approves a payment at their authorization server, the server redirects back with a `hash` parameter. OpenCheckout verifies this hash:
+
+```
+expected = SHA-256(client_nonce + "\n" + server_nonce + "\n" + interact_ref + "\n" + auth_server_url)
+```
+
+This confirms that the redirect genuinely originated from the authorization server and was not forged.
+
+If hash verification fails, OpenCheckout logs a warning but still proceeds with the grant continuation. The grant continuation token provides the primary security guarantee; the hash is defense-in-depth.
+
+## Server-Side Request Forgery (SSRF) Prevention
+
+Webhook URLs are validated before storage:
+
+- Must use `http:` or `https:` protocol
+- Blocked: `localhost`, `127.0.0.1`, `::1`
+- Blocked: private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+- Blocked: link-local addresses (169.254.0.0/16)
+
+## HTTP Security Headers
+
+Every API response includes:
+
+| Header | Value | Purpose |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Prevent MIME type sniffing |
+| `X-Frame-Options` | `DENY` | Prevent clickjacking |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Control referrer information |
+
+## Server Hardening
+
+- The Docker container runs as a non-root user (`nextjs`)
+- The SQLite database uses WAL mode with foreign keys enforced
+- Console error logging captures failures without exposing secrets
+- No development dependencies are included in the production Docker image
+- The `@interledger/open-payments` and `better-sqlite3` packages are excluded from Turbopack bundling to preserve native module compatibility
+
+## Reporting Security Issues
+
+If you discover a security vulnerability, please report it privately to the maintainers. Do not open a public issue.

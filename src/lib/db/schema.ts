@@ -1,0 +1,113 @@
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+
+export const merchants = sqliteTable("merchants", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  walletAddress: text("wallet_address").notNull(),
+  privateKey: text("private_key").notNull(), // AES-256-GCM encrypted
+  keyId: text("key_id").notNull(),
+  webhookUrl: text("webhook_url"),
+  webhookSecret: text("webhook_secret"),
+  branding: text("branding", { mode: "json" }).$type<{
+    logoUrl?: string;
+    primaryColor?: string;
+    accentColor?: string;
+  }>(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+export const apiKeys = sqliteTable("api_keys", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  keyHash: text("key_hash").notNull(), // SHA-256 hash
+  name: text("name").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  revokedAt: text("revoked_at"), // NULL = active
+});
+
+export const checkoutSessions = sqliteTable("checkout_sessions", {
+  id: text("id").primaryKey(), // cs_xxx
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  mode: text("mode", { enum: ["payment", "subscription", "donation"] }).notNull(),
+  status: text("status", {
+    enum: ["open", "completed", "expired", "canceled"],
+  })
+    .notNull()
+    .default("open"),
+  amountTotal: integer("amount_total"),
+  currency: text("currency").notNull(), // ISO 4217 lowercase
+  lineItems: text("line_items", { mode: "json" }).$type<
+    Array<{
+      priceData: {
+        currency: string;
+        productData: { name: string; description?: string };
+        unitAmount: number;
+      };
+      quantity: number;
+    }>
+  >(),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, string>>(),
+  successUrl: text("success_url").notNull(),
+  cancelUrl: text("cancel_url").notNull(),
+  url: text("url"),
+  // Open Payments references
+  incomingPaymentUrl: text("incoming_payment_url"),
+  incomingPaymentId: text("incoming_payment_id"),
+  quoteUrl: text("quote_url"),
+  quoteId: text("quote_id"),
+  outgoingPaymentUrl: text("outgoing_payment_url"),
+  // Grant references
+  continueAccessToken: text("continue_access_token"),
+  continueUri: text("continue_uri"),
+  interactRef: text("interact_ref"),
+  // Lifecycle
+  customerWallet: text("customer_wallet"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+  expiresAt: text("expires_at").notNull(),
+  completedAt: text("completed_at"),
+});
+
+export const idempotencyKeys = sqliteTable("idempotency_keys", {
+  keyHash: text("key_hash").primaryKey(), // SHA-256 of Idempotency-Key
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  sessionId: text("session_id").notNull(),
+  response: text("response", { mode: "json" }).$type<Record<string, unknown>>(),
+  statusCode: integer("status_code").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
+export const webhookEvents = sqliteTable("webhook_events", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  sessionId: text("session_id")
+    .notNull()
+    .references(() => checkoutSessions.id),
+  eventType: text("event_type").notNull(), // checkout.session.completed, checkout.session.expired, etc.
+  payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>(),
+  attempts: integer("attempts").default(0),
+  lastAttempt: text("last_attempt"),
+  deliveredAt: text("delivered_at"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});

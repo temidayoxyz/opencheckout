@@ -1,0 +1,152 @@
+---
+title: Getting Started
+description: Set up an Open Payments wallet, install OpenCheckout, create a merchant account, and accept your first payment.
+---
+
+This guide walks you through setting up OpenCheckout from scratch. By the end, you will have a running checkout server, a merchant account, and an API key you can use to create checkout sessions.
+
+## Step 1: Get an Open Payments Wallet
+
+OpenCheckout needs an Open Payments wallet address to receive payments. If you already have one with developer keys, skip to Step 2.
+
+For testing and development, the Interledger test network provides free wallets with play money:
+
+1. Go to [wallet.interledger-test.dev](https://wallet.interledger-test.dev)
+2. Click **Create account** at the bottom-right
+3. Enter your email address, create a password, and confirm it
+4. Check your inbox for a verification email from `tech@interledger.org` and click **Confirm my email address**
+5. Log in with your credentials
+6. Complete the identity verification steps
+7. Once logged in, click **New account** from the dashboard
+8. Enter an account name (e.g., "My Store"), choose an asset (USD, EUR, etc.), and click **Create account**
+9. Select your new account and click **Deposit** to add play money
+10. Click **Add wallet address**, give it a name (e.g., `mystore`), and add a public display name
+11. Go to **Settings → Developer Keys**, expand the menu for your wallet account, and click **Generate public & private key**
+12. Give the key a nickname and click **Generate keys**. A `private.key` file will download automatically
+13. Note the **Key ID** shown on the screen — you will need it
+
+You now have:
+- A wallet address URL: `https://ilp.interledger-test.dev/mystore`
+- A private key file: `private.key`
+- A key ID: a UUID like `60185f1c-e8a6-4b52-9ac1-e2fc1952cf76`
+
+The public key is automatically stored at your wallet's JWKS endpoint at `https://ilp.interledger-test.dev/mystore/jwks.json`. OpenCheckout only needs the private key and key ID.
+
+## Step 2: Install OpenCheckout
+
+```bash
+git clone https://github.com/temidayoxyz/opencheckout
+cd opencheckout
+npm install
+```
+
+## Step 3: Configure Environment Variables
+
+Create a `.env.local` file in the project root:
+
+```bash
+DATABASE_URL=data/opencheckout.db
+ENCRYPTION_KEY=<your-64-character-hex-key>
+BASE_URL=http://localhost:3000
+```
+
+Generate a secure encryption key:
+
+```bash
+openssl rand -hex 32
+```
+
+The `ENCRYPTION_KEY` is used to encrypt your merchant private key in the SQLite database. Store it securely. If you lose it, you will not be able to decrypt your private key and will need to re-run the setup wizard.
+
+## Step 4: Run the Setup Wizard
+
+The setup wizard creates your merchant record, encrypts your private key, and generates an API key:
+
+```bash
+npm run setup
+```
+
+You will be prompted for:
+
+- **Merchant name**: The display name shown on your checkout page (e.g., "My Store")
+- **Wallet address URL**: Your full wallet address (e.g., `https://ilp.interledger-test.dev/mystore`)
+- **Key ID**: The key identifier from your wallet's developer keys page
+- **Path to private key file**: The path to the `private.key` file you downloaded
+
+The wizard outputs your API key:
+
+```
+Merchant ID: mer_xxxxxxxxxxxx
+API Key:     sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+Copy the API key now and store it securely. It is never displayed again.
+
+If you need to convert your private key to PEM format (required by the Open Payments SDK), create a PEM file:
+
+```bash
+echo "-----BEGIN PRIVATE KEY-----" > private.pem
+cat private.key >> private.pem
+echo "-----END PRIVATE KEY-----" >> private.pem
+```
+
+Then use `private.pem` as the path in the setup wizard.
+
+## Step 5: Start the Server
+
+```bash
+npm run dev
+```
+
+The server starts at `http://localhost:3000`.
+
+## Step 6: Access the Dashboard
+
+Open `http://localhost:3000/dashboard` in your browser. Sign in using the API key from the setup wizard.
+
+The dashboard shows your transaction history, API key management, and webhook settings. Read the [Dashboard Guide](/dashboard-guide) for a full walkthrough.
+
+## Step 7: Create Your First Checkout Session
+
+```bash
+curl -X POST http://localhost:3000/api/checkout/sessions \
+  -H "Authorization: Bearer sk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "payment",
+    "line_items": [{
+      "price_data": {
+        "currency": "usd",
+        "product_data": { "name": "Test Product" },
+        "unit_amount": 500
+      },
+      "quantity": 1
+    }],
+    "success_url": "https://example.com/success",
+    "cancel_url": "https://example.com/cancel"
+  }'
+```
+
+The response includes a `url` field. Open that URL in your browser to see the checkout page.
+
+## Step 8: Complete a Test Payment
+
+To test a full payment, you need two wallet addresses — one to receive (your merchant wallet) and one to send (a customer wallet). Create a second wallet address on the Interledger test network for the customer role.
+
+1. Open the checkout page URL from Step 7 in your browser
+2. Enter the customer's wallet address (the second wallet you created)
+3. Click the payment button
+4. You will be redirected to the customer's account provider to approve the payment
+5. Log in as the customer and approve the payment
+6. After approval, you see the OpenCheckout confirmation page
+7. After a few seconds, you are forwarded to your success URL
+
+The payment appears in your dashboard at `/dashboard` and in both wallet account histories on the test network.
+
+## Next Steps
+
+- Read the [API Reference](/api-reference) for complete endpoint documentation
+- Follow the [Integration Guide](/integration-guide) to integrate OpenCheckout into your application
+- Learn about the [Dashboard](/dashboard-guide) features
+- Review [Deployment](/deployment) for production setup
+- Understand the [Architecture](/architecture) and [Security](/security) model
