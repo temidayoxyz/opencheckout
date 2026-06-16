@@ -83,9 +83,11 @@ export default function DashboardPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-block-mint mb-6">
             <Receipt className="w-8 h-8 text-ink" />
           </div>
-          <h1 className="text-[32px] font-[600] tracking-[-0.4px] text-ink leading-tight mb-3">
-            OpenCheckout
-          </h1>
+          <img
+            src="/logo-light.png"
+            alt="OpenCheckout"
+            className="h-16 w-auto mx-auto mb-3"
+          />
           <p className="text-lg font-[320] text-ink-soft">Merchant dashboard</p>
         </div>
 

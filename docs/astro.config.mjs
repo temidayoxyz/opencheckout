@@ -8,14 +8,66 @@ export default defineConfig({
     starlight({
       title: "OpenCheckout",
       description: "Open-source, self-hosted checkout powered by Open Payments.",
+      favicon: "/favicon.ico",
+      logo: {
+        light: "./src/assets/logo-light.png",
+        dark: "./src/assets/logo-dark.png",
+        alt: "OpenCheckout",
+        replacesTitle: true,
+      },
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://temidayoxyz.github.io/opencheckout/og-image.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:width",
+            content: "1200",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image:height",
+            content: "630",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:type",
+            content: "website",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:card",
+            content: "summary_large_image",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "twitter:image",
+            content: "https://temidayoxyz.github.io/opencheckout/og-image.png",
+          },
+        },
+      ],
       social: {
         github: "https://github.com/temidayoxyz/opencheckout",
       },
+      customCss: ["/src/custom.css"],
       sidebar: [
         {
-          label: "Start Here",
+          label: "Overview",
           items: [
-            { label: "Introduction", slug: "index" },
+            { label: "Introduction", slug: "introduction" },
             { label: "Getting Started", slug: "getting-started" },
             { label: "Dashboard Guide", slug: "dashboard-guide" },
           ],
@@ -42,9 +94,6 @@ export default defineConfig({
           ],
         },
       ],
-      editLink: {
-        baseUrl: "https://github.com/temidayoxyz/opencheckout/edit/main/docs/",
-      },
     }),
   ],
 });

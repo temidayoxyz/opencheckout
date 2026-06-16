@@ -1,0 +1,30 @@
+.header .site-title img {
+  height: 4rem;
+  width: auto;
+}
+
+.hero-button {
+  display: inline-block;
+  padding: 0.6rem 1.4rem;
+  border-radius: 0.4rem;
+  background: var(--sl-color-text-accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 0.95rem;
+  border: 1px solid var(--sl-color-text-accent);
+  transition: background 0.15s, color 0.15s;
+}
+.hero-button.secondary {
+  background: transparent;
+  color: var(--sl-color-text-accent);
+}
+.hero-button:hover {
+  opacity: 0.85;
+  color: #fff;
+  text-decoration: none;
+}
+.hero-button.secondary:hover {
+  background: var(--sl-color-text-accent);
+  color: #fff;
+}

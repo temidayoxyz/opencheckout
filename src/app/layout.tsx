@@ -14,7 +14,18 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "OpenCheckout",
-  description: "Open-source, self-hosted checkout. Accept payments via Open Payments.",
+  description: "Open-source, self-hosted checkout. Stripe-compatible API powered by Open Payments.",
+  openGraph: {
+    title: "OpenCheckout",
+    description: "Open-source, self-hosted checkout. Stripe-compatible API powered by Open Payments.",
+    type: "website",
+    siteName: "OpenCheckout",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "OpenCheckout",
+    description: "Open-source, self-hosted checkout. Stripe-compatible API powered by Open Payments.",
+  },
 };
 
 export default function RootLayout({

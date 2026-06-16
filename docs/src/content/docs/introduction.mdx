@@ -1,0 +1,119 @@
+---
+title: Introduction
+description: What OpenCheckout is, how it works, and why you'd use it instead of Stripe or PayPal.
+---
+
+OpenCheckout is an open-source, self-hosted checkout system for accepting payments on the web. It provides a hosted checkout page and a Stripe-compatible API that you deploy on your own infrastructure. Your customers pay using their [Open Payments](https://openpayments.dev) wallet address — a URL-based identifier for their bank account, digital wallet, or mobile money account.
+
+Under the hood, OpenCheckout orchestrates the full Open Payments protocol flow:
+
+1. Creates an **incoming payment** on your wallet to receive funds
+2. Requests a **quote** from the customer's account provider to confirm the payment cost
+3. Facilitates an **interactive grant** where the customer approves the payment at their own financial institution
+4. Issues an **outgoing payment** instruction to move the money
+
+OpenCheckout does not touch funds or execute payments — it separates payment instructions from payment execution. This means you can include payment functionality in your application without registering as a licensed money transmitter.
+
+## Why OpenCheckout
+
+| Aspect | OpenCheckout | Stripe / PayPal / Paystack |
+|---|---|---|
+| Deployment | Self-hosted on your server | Platform-hosted on their servers |
+| Data ownership | You own all payment data | They own your payment data |
+| Per-transaction fees | None | 2.9% + $0.30 typical |
+| License | Open-source (AGPLv3) | Proprietary |
+| Payment method | Any Open Payments wallet | Cards, bank transfers, their wallet |
+| Wallet compatibility | Works with any compliant ASE | Locked to their ecosystem |
+| API compatibility | Stripe-compatible sessions API | Stripe's own API |
+
+## Key Features
+
+- **Stripe-compatible checkout sessions API** — same endpoint shape, response format, and idempotency behavior
+- **Wallet-agnostic** — any bank, digital wallet, or mobile money provider implementing Open Payments
+- **Cross-currency payments** — customers pay in their currency; you receive in yours
+- **Interactive payment consent** — customers approve payments at their own financial institution via GNAP
+- **Merchant dashboard** — transaction history, API key management, webhook configuration
+- **Webhook delivery** — HMAC-SHA256 signed events with automatic retries
+- **Cryptographic security** — Ed25519 request signing, AES-256-GCM encryption at rest
+- **Single-command deployment** — `docker compose up` with SQLite included
+
+## How It Works
+
+```
+Step 1: Your backend creates a checkout session
+  POST /api/checkout/sessions  →  { id, url, status: "open" }
+
+Step 2: Redirect your customer to the checkout page
+  https://checkout.yourdomain.com/pay/cs_abc123
+
+Step 3: Customer enters their wallet address
+  e.g., https://mybank.com/username
+
+Step 4: OpenCheckout orchestrates the Open Payments flow
+  incoming payment → quote → interactive grant → outgoing payment
+
+Step 5: Customer is redirected to your success URL
+  https://yourstore.com/order/123?session_id=cs_abc123&status=complete
+
+Step 6: A webhook fires to your backend with full payment details
+```
+
+## Quick Example
+
+Create a $20.00 checkout session from your backend:
+
+```bash
+curl -X POST https://checkout.yourdomain.com/api/checkout/sessions \
+  -H "Authorization: Bearer sk_YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-456-unique-key" \
+  -d '{
+    "mode": "payment",
+    "line_items": [{
+      "price_data": {
+        "currency": "usd",
+        "product_data": { "name": "T-shirt", "description": "Cotton crew neck" },
+        "unit_amount": 2000
+      },
+      "quantity": 1
+    }],
+    "success_url": "https://yourstore.com/order/456?session_id={CHECKOUT_SESSION_ID}",
+    "cancel_url": "https://yourstore.com/cart",
+    "metadata": { "order_id": "456" }
+  }'
+```
+
+Response:
+
+```json
+{
+  "id": "cs_abc123xyz",
+  "status": "open",
+  "url": "https://checkout.yourdomain.com/pay/cs_abc123xyz",
+  "amount_total": 2000,
+  "currency": "usd",
+  "mode": "payment",
+  "expires_at": "2026-06-17T00:00:00Z",
+  "created_at": "2026-06-16T00:00:00Z"
+}
+```
+
+Redirect your customer to `url`. OpenCheckout handles everything else.
+
+## Open Payments Protocol
+
+OpenCheckout is built on the [Open Payments](https://openpayments.dev) protocol — an open API standard maintained by the [Interledger Foundation](https://interledger.org). The standard defines three server roles:
+
+- **Wallet Address Server** — exposes public information about an Open Payments-enabled account
+- **Resource Server** — exposes APIs for creating incoming payments, quotes, and outgoing payments
+- **Authorization Server** — exposes GNAP-compliant APIs for obtaining grants
+
+OpenCheckout acts as a client that orchestrates calls across all three servers. You do not need to understand the protocol internals — the SDK handles key management, request signing, grant negotiation, and hash verification automatically.
+
+## Who This Is For
+
+- **Developers and startups** who want to accept payments without per-transaction fees
+- **Merchants** who want full control over their payment data and checkout experience
+- **Marketplace platforms** that need to orchestrate payments between multiple parties
+- **Non-profits and open-source projects** that want a payment solution aligned with their values
+- **Anyone with an Open Payments-enabled wallet** who wants to receive payments on their website

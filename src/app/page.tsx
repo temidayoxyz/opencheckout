@@ -5,9 +5,11 @@ export default function HomePage() {
     <main className="min-h-screen bg-canvas">
       {/* Hero — white canvas + oversized display type */}
       <section className="max-w-[1280px] mx-auto px-6 pt-32 pb-20 text-center">
-        <h1 className="text-[64px] font-[340] tracking-[-0.96px] leading-[1.1] text-ink">
-          OpenCheckout
-        </h1>
+        <img
+          src="/logo-light.png"
+          alt="OpenCheckout"
+          className="h-20 w-auto mx-auto"
+        />
         <p className="mt-6 text-[26px] font-[340] tracking-[-0.26px] leading-snug text-ink-soft max-w-[640px] mx-auto">
           Open-source, self-hosted checkout. Accept payments via the Open
           Payments protocol.

@@ -48,9 +48,11 @@ export default function DashboardLayout({
       <nav className="sticky top-0 z-10 bg-canvas border-b border-hairline h-14 flex items-center">
         <div className="max-w-5xl mx-auto w-full px-6 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <span className="text-lg font-[600] text-ink tracking-[-0.2px]">
-              OpenCheckout
-            </span>
+            <img
+              src="/logo-light.png"
+              alt="OpenCheckout"
+              className="h-16 w-auto"
+            />
             <div className="flex gap-1">
               {navItems.map((item) => {
                 const Icon = item.icon;
