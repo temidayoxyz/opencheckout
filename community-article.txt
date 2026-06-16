@@ -1,0 +1,90 @@
+# Building OpenCheckout: An Open-Source, Self-Hosted Checkout on the Open Payments Protocol
+
+When you want to accept payments online today, the playbook is the same: sign up for Stripe, copy a few lines of code, and you are done. It works. But it also means you are paying 2.9% plus thirty cents on every transaction, your payment data lives on someone else's servers, and your customers need a credit card. For a lot of businesses, that is fine. For a lot of others — especially developers, small merchants, and communities that care about sovereignty — it is a compromise they never really chose. It was just the only option.
+
+I wanted to know if there was another way. That question led me to Open Payments, and eventually to building OpenCheckout.
+
+## The Problem With How We Accept Payments
+
+Stripe, PayPal, and Paystack are excellent products. They abstract away enormous complexity. But that abstraction comes at a cost you feel every single month: per-transaction fees that eat into margins, data that you do not own, and a checkout experience you cannot fully control.
+
+More fundamentally, these platforms sit between you and your customer's money. They are not just processing payments — they are the entire payment relationship. If Stripe decides to hold your funds, change their pricing, or deprecate an API, you adapt or you leave. There is no self-hosting option. There is no alternative provider you can swap in without rewriting your integration.
+
+I started asking: what would a checkout system look like if it were built like email — an open protocol that any provider can implement, where you can choose your host, and where the software is yours?
+
+## Enter Open Payments
+
+[Open Payments](https://openpayments.dev) is an open API standard maintained by the Interledger Foundation. It defines a way for applications to issue payment instructions to account servicing entities — banks, digital wallet providers, mobile money operators — without touching funds or requiring a money transmitter license. It separates payment instructions from payment execution. It uses GNAP (the successor to OAuth 2.0) for authorization. Every request is cryptographically signed.
+
+The standard is designed for interoperability. A wallet address — a URL like `https://mybank.com/alice` — is both an account identifier and a service endpoint. You make a GET request to it and discover the authorization server, the resource server, the supported currency, and the public keys. There is no central registry, no pre-registration, no aggregator sitting in the middle.
+
+I read through the spec, the documentation, and the SDKs. The more I understood it, the more it felt like the missing piece. What was missing was the checkout layer — the thing that makes Open Payments usable for a merchant who just wants to sell a T-shirt.
+
+## What OpenCheckout Does
+
+OpenCheckout is a self-hosted checkout system. You deploy it on your own server with a single `docker compose up` command. It gives you a Stripe-compatible API for creating checkout sessions and a hosted payment page where your customers enter their wallet address to pay.
+
+Under the hood, OpenCheckout orchestrates the full Open Payments flow: it creates an incoming payment on your wallet, requests a quote from your customer's account provider to confirm the cost, facilitates the interactive grant where your customer approves the payment at their own bank, and issues the outgoing payment instruction. The customer is redirected back to your success URL. A webhook fires to your backend. The session is marked complete.
+
+Here is what that looks like from your backend:
+
+```
+POST /api/checkout/sessions
+Authorization: Bearer sk_xxx
+
+{
+  "mode": "payment",
+  "line_items": [{
+    "price_data": {
+      "currency": "usd",
+      "product_data": { "name": "T-shirt" },
+      "unit_amount": 2000
+    },
+    "quantity": 1
+  }],
+  "success_url": "https://yourstore.com/order/123",
+  "cancel_url": "https://yourstore.com/cart"
+}
+```
+
+The response includes a `url` field. You redirect your customer there. OpenCheckout handles the rest.
+
+## Why I Think This Works
+
+There are a few things that came together in a way I did not fully expect when I started building.
+
+**The protocol does the heavy lifting.** Open Payments is genuinely well-designed. The separation of payment instructions from execution means OpenCheckout never touches money. The SDK handles key management, request signing, grant negotiation, and hash verification. Most of the security-critical work is inherited from the protocol, not reinvented in the application.
+
+**Wallet addresses are a better primitive than card numbers.** A URL is discoverable, shareable, and verifiable. You can GET it to find out everything you need. There is no PAN, no CVV, no expiry date to store. The customer authenticates at their own financial institution — the same GNAP flow that protects their bank account. There is nothing to steal from the checkout page.
+
+**Self-hosted means zero marginal cost.** SQLite as the database. No Redis. No Postgres. No cloud services. The only external dependency is the Open Payments SDK. A merchant on a $6 VPS can run this indefinitely with no per-transaction overhead.
+
+**Stripe compatibility reduces adoption friction.** The checkout sessions API mirrors Stripe's shape — same endpoint, same field names, same idempotency behavior. A developer who has integrated Stripe can switch their backend to OpenCheckout by changing a base URL and an API key. That familiarity matters when you are asking someone to try something new.
+
+## The Architecture, Briefly
+
+OpenCheckout is a Next.js application with three main surfaces:
+
+The **merchant API** (`/api/checkout/sessions`) is the backend-facing REST interface. It is authenticated with API keys, supports idempotency, and validates all input against Zod schemas.
+
+The **checkout page** (`/pay/:sessionId`) is the customer-facing UI. It shows the order summary in a cream color block, accepts a wallet address URL, and handles the redirect to the customer's authorization server for payment approval. After approval, a success page confirms the payment before forwarding to the merchant's URL.
+
+The **orchestration engine** (`src/lib/open-payments/`) wraps the Open Payments SDK and manages the full protocol lifecycle: wallet address resolution, incoming payment creation, quote requests, interactive grant handling, outgoing payment creation, and hash verification.
+
+The **dashboard** (`/dashboard`) gives the merchant a view of their transactions, API key management, and webhook configuration. It uses a monochrome design system with pastel color blocks — a deliberate choice to make the checkout feel trustworthy and editorial rather than generic.
+
+Everything runs on SQLite with Drizzle ORM. Private keys are encrypted at rest with AES-256-GCM. API keys are SHA-256 hashed. Webhooks are signed with HMAC-SHA256 and retried with exponential backoff.
+
+## What Testing Looked Like
+
+I ran eight real transactions through the Interledger test network — from $3.00 to $2,000.00 — between two wallet addresses, one denominated in EUR and one in USD. Every payment completed successfully. The exchange rate was applied automatically by the account providers. The product description ("Stickers Pack", "Coffee Mug") appeared in the transaction history on both sides. The redirect flow worked. The success page showed a countdown and forwarded to the merchant URL.
+
+There is something satisfying about watching money move through software you built, through a protocol you did not build but chose to trust, between accounts at a provider you do not control. It reinforces that the protocol is the product — and that the protocol works.
+
+## What Comes Next
+
+Open Payments adoption among account servicing entities is still early. The Interledger test network works today for development and testing. As real ASEs implement the standard, the addressable market for OpenCheckout grows automatically — the protocol is the integration.
+
+For OpenCheckout itself, the roadmap includes subscription support via recurring grants, a hosted demo instance, deeper dashboard analytics, and multi-merchant support. The code is open-source under AGPLv3 at [github.com/temidayoxyz/opencheckout](https://github.com/temidayoxyz/opencheckout). Contributions, feedback, and questions are welcome.
+
+If you have an Open Payments wallet and five minutes, you can be accepting payments on your own domain. That feels like something worth sharing.
