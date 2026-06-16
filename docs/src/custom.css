@@ -21,28 +21,36 @@
   display: inline-block;
   padding: 0.6rem 1.5rem;
   border-radius: 0.4rem;
-  background: var(--sl-color-gray-1);
-  color: var(--sl-color-gray-6);
   font-weight: 600;
   text-decoration: none;
   font-size: 0.95rem;
-  border: 1px solid var(--sl-color-gray-1);
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  border: 1px solid transparent;
 }
+
+[data-theme="light"] .hero-button {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+[data-theme="dark"] .hero-button {
+  background: #e5e7eb;
+  color: #111827;
+  border-color: #e5e7eb;
+}
+
 .hero-button.secondary {
   background: transparent;
-  color: var(--sl-color-gray-1);
-  border-color: var(--sl-color-gray-3);
 }
-.hero-button:hover {
-  opacity: 0.88;
-  color: var(--sl-color-gray-6);
-  text-decoration: none;
+
+[data-theme="light"] .hero-button.secondary {
+  color: #000;
+  border-color: #000;
 }
-.hero-button.secondary:hover {
-  background: var(--sl-color-gray-1);
-  color: var(--sl-color-gray-6);
-  opacity: 1;
+
+[data-theme="dark"] .hero-button.secondary {
+  color: #e5e7eb;
+  border-color: #6b7280;
 }
 
 /* ── Feature cards ── */
