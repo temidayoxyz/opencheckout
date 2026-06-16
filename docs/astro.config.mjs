@@ -2,8 +2,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
 export default defineConfig({
-  site: "https://opencheckout.dev",
-  base: "/",
+  site: "https://temidayoxyz.github.io",
+  base: "/opencheckout/",
   integrations: [
     starlight({
       title: "OpenCheckout",
