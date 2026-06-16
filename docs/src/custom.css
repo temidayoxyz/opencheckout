@@ -9,32 +9,34 @@
   gap: 1rem;
   margin-top: 2rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .hero-button {
   display: inline-block;
-  padding: 0.6rem 1.4rem;
+  padding: 0.6rem 1.5rem;
   border-radius: 0.4rem;
-  background: var(--sl-color-text-accent);
-  color: #fff;
+  background: var(--sl-color-gray-1);
+  color: var(--sl-color-gray-6);
   font-weight: 600;
   text-decoration: none;
   font-size: 0.95rem;
-  border: 1px solid var(--sl-color-text-accent);
-  transition: background 0.15s, color 0.15s, opacity 0.15s;
+  border: 1px solid var(--sl-color-gray-1);
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 .hero-button.secondary {
   background: transparent;
-  color: var(--sl-color-text-accent);
+  color: var(--sl-color-gray-1);
+  border-color: var(--sl-color-gray-3);
 }
 .hero-button:hover {
-  opacity: 0.85;
-  color: #fff;
+  opacity: 0.88;
+  color: var(--sl-color-gray-6);
   text-decoration: none;
 }
 .hero-button.secondary:hover {
-  background: var(--sl-color-text-accent);
-  color: #fff;
+  background: var(--sl-color-gray-1);
+  color: var(--sl-color-gray-6);
   opacity: 1;
 }
 
@@ -44,6 +46,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 1.5rem;
   margin-top: 2rem;
+  text-align: center;
 }
 
 .landing-card {
