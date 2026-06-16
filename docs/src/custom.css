@@ -53,6 +53,29 @@
   border-color: #6b7280;
 }
 
+/* ── Lock hover to match normal state (no hover effect) ── */
+[data-theme="light"] .hero-button:hover {
+  background: #000;
+  color: #fff;
+  text-decoration: none;
+}
+[data-theme="light"] .hero-button.secondary:hover {
+  background: transparent;
+  color: #000;
+  text-decoration: none;
+}
+
+[data-theme="dark"] .hero-button:hover {
+  background: #e5e7eb;
+  color: #111827;
+  text-decoration: none;
+}
+[data-theme="dark"] .hero-button.secondary:hover {
+  background: transparent;
+  color: #e5e7eb;
+  text-decoration: none;
+}
+
 /* ── Feature cards ── */
 .landing-grid {
   display: grid;
