@@ -25,10 +25,10 @@ export default async function PayPage({ params }: PayPageProps) {
         currency: session.currency,
         lineItems: session.lineItems ?? [],
         mode: session.mode,
-        merchantId: session.merchantId,
-        continueAccessToken: session.continueAccessToken,
-        customerWallet: session.customerWallet,
-        incomingPaymentUrl: session.incomingPaymentUrl,
+        hasPendingGrant: Boolean(
+          session.continueAccessToken && session.customerWallet
+        ),
+        pendingApprovalUrl: session.grantInteractUrl ?? undefined,
       }}
       merchantName={merchant.name}
     />

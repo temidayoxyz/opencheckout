@@ -1,34 +1,37 @@
-import { ArrowRight, Code, Globe, Shield, Zap } from "lucide-react";
+import { ArrowRight, Code, Globe, Shield } from "lucide-react";
+import Image from "next/image";
 
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-canvas">
+    <main className="min-h-screen bg-canvas liquid-bg">
       {/* Hero — white canvas + oversized display type */}
       <section className="max-w-[1280px] mx-auto px-6 pt-32 pb-20 text-center">
-        <img
+        <Image
           src="/logo-light.png"
           alt="OpenCheckout"
+          width={873}
+          height={286}
+          priority
           className="h-20 w-auto mx-auto"
         />
         <p className="mt-6 text-[26px] font-[340] tracking-[-0.26px] leading-snug text-ink-soft max-w-[640px] mx-auto">
-          Open-source, self-hosted checkout. Accept payments via the Open
-          Payments protocol.
+          Accept payments through the Open Payments protocol with a checkout
+          flow customers can complete from any supported wallet, bank, or
+          mobile money account.
         </p>
-        <div className="mt-10 flex items-center justify-center gap-4">
+        <div className="mx-auto mt-10 flex w-full max-w-sm flex-col items-stretch justify-center gap-3 sm:max-w-none sm:flex-row sm:items-center sm:gap-4">
           <a
-            href="https://github.com/opencheckout/opencheckout"
-            className="btn-primary text-lg py-3.5 px-8"
+            href="https://github.com/temidayoxyz/opencheckout"
+            className="btn-primary w-full justify-center whitespace-nowrap px-6 py-3.5 text-base sm:w-auto sm:px-8 sm:text-lg"
           >
             Get started for free
             <ArrowRight className="w-5 h-5" />
           </a>
           <a
-            href="https://openpayments.dev"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary text-lg py-3 px-8"
+            href="/dashboard"
+            className="btn-secondary w-full justify-center whitespace-nowrap px-6 py-3.5 text-base sm:w-auto sm:px-8 sm:py-3 sm:text-lg"
           >
-            Learn about Open Payments
+            Open dashboard
           </a>
         </div>
       </section>
@@ -39,7 +42,7 @@ export default function HomePage() {
           <p className="font-mono text-xs uppercase tracking-[0.6px] text-ink-soft mb-4">
             Quick Start
           </p>
-          <pre className="bg-canvas rounded-lg p-6 text-base font-mono text-ink leading-relaxed overflow-x-auto border border-hairline">
+          <pre className="glass-panel rounded-2xl p-6 text-base font-mono text-ink leading-relaxed overflow-x-auto">
             {`POST /api/checkout/sessions
 Authorization: Bearer sk_xxx
 
@@ -58,8 +61,7 @@ Authorization: Bearer sk_xxx
 }`}
           </pre>
           <p className="mt-4 text-sm text-ink-soft font-[320]">
-            Stripe-compatible Checkout Sessions API. No third-party fees. No
-            vendor lock-in.
+            No OpenCheckout transaction fees. No vendor lock-in.
           </p>
         </div>
       </div>
@@ -75,16 +77,16 @@ Authorization: Bearer sk_xxx
             },
             {
               icon: Shield,
-              title: "Secured by OpenCheckout",
-              body: "Ed25519 signatures on every request. AES-256 encrypted private keys at rest.",
+              title: "Cryptographic Security",
+              body: "Every payment request is verified, and sensitive merchant keys stay protected at rest.",
             },
             {
               icon: Code,
-              title: "Stripe-Compatible API",
-              body: "Drop-in replacement. Same checkout sessions API your developers already know.",
+              title: "REST API",
+              body: "Start a checkout, track its progress, and return customers to your store when payment is complete.",
             },
           ].map(({ icon: Icon, title, body }) => (
-            <div key={title} className="feature-tile bg-surface-soft rounded-2xl p-6">
+            <div key={title} className="feature-tile glass-panel rounded-2xl p-6">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-canvas mb-5">
                 <Icon className="w-6 h-6 text-ink" />
               </div>
@@ -107,7 +109,8 @@ Authorization: Bearer sk_xxx
             One command to production
           </h2>
           <p className="text-lg font-[320] text-ink-soft mb-6 max-w-[480px] mx-auto">
-            Self-host on your own infrastructure. No external services required.
+            Bring the full checkout stack online in minutes, with payments,
+            webhooks, and keys running in your own environment.
           </p>
           <pre className="inline-block bg-canvas rounded-lg px-6 py-4 text-base font-mono text-ink border border-hairline">
             docker compose up -d
@@ -120,27 +123,33 @@ Authorization: Bearer sk_xxx
         <div className="max-w-[1280px] mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <span className="text-lg font-[600]">OpenCheckout</span>
-              <p className="text-sm text-on-inverse-soft mt-2 font-[320]">
-                Open-source, self-hosted checkout.
+              <Image
+                src="/logo-dark.png"
+                alt="OpenCheckout"
+                width={190}
+                height={70}
+                unoptimized
+                className="h-12 w-auto"
+              />
+              <p className="text-sm text-white/50 mt-2 font-[320]">
+                Payments that stay in your flow through the Open Payments
+                protocol.
               </p>
             </div>
-            <div className="flex items-center gap-4 text-sm text-on-inverse-soft font-[320]">
+            <div className="flex items-center gap-4 text-sm text-white/50 font-[320]">
               <a
                 href="https://openpayments.dev"
                 className="hover:text-inverse-ink transition-colors"
               >
                 Open Payments
               </a>
-              <span className="text-on-inverse-soft">·</span>
+              <span className="text-white/50">·</span>
               <a
-                href="https://github.com/opencheckout/opencheckout"
+                href="https://github.com/temidayoxyz/opencheckout"
                 className="hover:text-inverse-ink transition-colors"
               >
                 GitHub
               </a>
-              <span className="text-on-inverse-soft">·</span>
-              <span>Secured by OpenCheckout</span>
             </div>
           </div>
         </div>

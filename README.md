@@ -1,274 +1,265 @@
 # OpenCheckout
 
-Open-source, self-hosted checkout for the web. Drop-in Stripe-compatible API. Powered by the [Open Payments](https://openpayments.dev) protocol — an open standard implemented by banks, digital wallets, and mobile money providers.
+OpenCheckout is checkout orchestration software built on the
+[Open Payments](https://openpayments.dev) protocol. It gives merchants a hosted
+payment page, a REST API, a dashboard, signed webhooks, and a deployment they
+control.
 
-**No per-transaction fees. No vendor lock-in. No third-party payment processor.**
+Customers approve payments with an Open Payments-enabled wallet, bank, or
+mobile-money account. OpenCheckout itself does not hold funds or add a
+per-transaction fee; account providers may still apply their own fees or
+exchange rates.
 
----
+## What it does
 
-## What is OpenCheckout?
+1. Your backend creates a checkout session.
+2. You redirect the customer to the session URL.
+3. The customer enters their wallet address.
+4. OpenCheckout creates the incoming payment and quote, then requests an
+   interactive outgoing-payment grant.
+5. The customer approves at their wallet provider.
+6. OpenCheckout creates the outgoing payment, records completion, sends a
+   signed webhook, and forwards the customer to your success URL.
 
-OpenCheckout gives you a hosted checkout page and a Stripe-compatible API that you run on your own infrastructure. Your customers pay with their Open Payments wallet address instead of entering credit card details.
-
-Under the hood, OpenCheckout orchestrates the [Open Payments](https://openpayments.dev) protocol — it creates incoming payments, requests quotes, handles interactive grant consent, and issues outgoing payment instructions. It separates payment instructions from payment execution, so you can include payment functionality in your application without registering as a licensed money transmitter.
-
-### How It Works
-
-```
-1. Your backend creates a checkout session via API
-   POST /api/checkout/sessions
-
-2. You redirect your customer to the checkout page
-   https://checkout.yourdomain.com/pay/cs_xxx
-
-3. The customer enters their wallet address URL
-   (e.g., https://mybank.com/username)
-
-4. OpenCheckout orchestrates the full Open Payments flow:
-   incoming payment → quote → interactive grant → outgoing payment
-
-5. The customer approves the payment at their bank or wallet provider
-
-6. Payment completes → customer redirected to your success URL
-   A webhook fires to your backend for server-side confirmation
-```
-
-### Architecture
-
-```
-┌─────────────────────────────────┐
-│ Your Server                     │
-│                                 │
-│  POST /api/checkout/sessions ◄──┼──── Your Backend
-│                                 │
-│  GET /pay/cs_xxx               ◄──┼──── Customer Browser
-│                                 │
-│  ┌───────────────────────────┐ │
-│  │ OpenCheckout Engine       │ │
-│  │                           │ │
-│  │  Incoming Payment ────────┼─┼──► Merchant's ASE (receives funds)
-│  │  Quote ───────────────────┼─┼──► Customer's ASE (confirms cost)
-│  │  Outgoing Payment ────────┼─┼──► Customer's ASE (sends funds)
-│  │                           │ │
-│  │  SQLite DB + Webhooks     │ │
-│  └───────────────────────────┘ │
-│                                 │
-│  /dashboard                    │   Merchant Dashboard
-└─────────────────────────────────┘
-```
-
----
+OpenCheckout sends payment instructions; the customer's and merchant's account
+providers execute and settle the payment. Regulatory obligations vary by
+jurisdiction and business model, so production operators should obtain their
+own legal guidance.
 
 ## Features
 
-- **Stripe-compatible checkout sessions API** — same endpoint shape, same idempotency headers, same response format
-- **Wallet-agnostic** — works with any bank, digital wallet, or mobile money provider that implements Open Payments
-- **Cross-currency** — customers can pay in their currency; recipients receive in theirs
-- **Interactive payment consent** — customers approve payments at their own financial institution via the GNAP protocol
-- **Merchant dashboard** — transaction list, API key management, webhook configuration
-- **Webhook delivery** — HMAC-SHA256 signed events with automatic retries
-- **Ed25519 request signing** — every request to the Open Payments API is cryptographically signed
-- **AES-256-GCM encryption** — merchant private keys encrypted at rest
-- **Idempotency keys** — `Idempotency-Key` header prevents duplicate session creation
-- **Self-hosted** — one `docker compose up` command to deploy
-- **Zero external dependencies** — SQLite database, no Redis, no Postgres, no cloud services
+- One-time Checkout Sessions REST API
+- Wallet-agnostic and cross-currency Open Payments flow
+- Resumable interactive approval and interrupted-payment reconciliation
+- Concurrency-safe payment preparation and callback handling
+- Merchant dashboard for transactions, API keys, and webhook settings
+- HMAC-SHA256 signed webhooks with immediate retries
+- Idempotent session creation with 24-hour key cleanup
+- Encrypted merchant keys, webhook secrets, and pending grant credentials
+- SSRF-resistant public URL checks and fail-closed interaction hashes
+- SQLite WAL storage with automatic schema bootstrap
+- Docker Compose deployment with a non-root runtime and health checks
 
----
+## Requirements
 
-## Prerequisites
+- Node.js 22+
+- npm 10+
+- An Open Payments wallet address with an Ed25519 developer key
+- Docker and a TLS reverse proxy for production
 
-- **Node.js 22 or later**
-- **npm 10 or later**
-- **Docker** (for production deployment)
-- An **Open Payments wallet address** with developer keys
+For testing, create wallets at
+[wallet.interledger-test.dev](https://wallet.interledger-test.dev).
 
-### Getting a test wallet
-
-For development and testing, create a free account on the Interledger test network:
-
-1. Visit [wallet.interledger-test.dev](https://wallet.interledger-test.dev)
-2. Click **Create account** and follow the registration steps
-3. Complete the identity verification steps
-4. Click **New account** to create a wallet and choose an asset (e.g., USD or EUR)
-5. Click **Deposit** to add play money to your wallet
-6. Click **Add wallet address** and give it a name (e.g., `mystore`)
-7. Go to **Settings → Developer Keys** and click **Generate public & private key**
-8. Save the downloaded `private.key` file — you will need it for OpenCheckout
-
----
-
-## Quick Start
+## Local setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/temidayoxyz/opencheckout
 cd opencheckout
-
-# Install dependencies
 npm install
+cp .env.example .env.local
+```
 
-# Create your environment file
-cat > .env.local << 'EOF'
+Set a 64-character encryption key and the local URL:
+
+```dotenv
 DATABASE_URL=data/opencheckout.db
-ENCRYPTION_KEY=$(openssl rand -hex 32)
+ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 BASE_URL=http://localhost:3000
-EOF
+CORS_ALLOWED_ORIGINS=
+MAINTENANCE_SECRET=<output of: openssl rand -hex 32>
+```
 
-# Run the setup wizard
-# You will need: your wallet address URL, key ID, and path to private key
+If your wallet downloads a raw `private.key`, convert it to PEM before setup:
+
+```bash
+{
+  echo "-----BEGIN PRIVATE KEY-----"
+  cat private.key
+  echo "-----END PRIVATE KEY-----"
+} > private.pem
+```
+
+Run the merchant setup wizard, then start the app:
+
+```bash
 npm run setup
-
-# Start the development server
 npm run dev
 ```
 
-The setup wizard creates a merchant record, encrypts your private key, and outputs an API key. **Save this API key immediately** — it will not be displayed again.
+Open `http://localhost:3000/dashboard` and sign in with the API key shown once
+by the setup wizard.
 
-Open `http://localhost:3000/dashboard` and sign in with your API key to access the merchant dashboard.
+## Create a checkout
 
----
-
-## Creating Your First Checkout Session
+All money values are integers in the currency's smallest unit.
 
 ```bash
 curl -X POST http://localhost:3000/api/checkout/sessions \
   -H "Authorization: Bearer sk_YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -H "Idempotency-Key: your-unique-idempotency-key" \
+  -H "Idempotency-Key: order-123" \
   -d '{
     "mode": "payment",
-    "line_items": [
-      {
-        "price_data": {
-          "currency": "usd",
-          "product_data": {
-            "name": "T-shirt",
-            "description": "100% organic cotton"
-          },
-          "unit_amount": 2000
+    "line_items": [{
+      "price_data": {
+        "currency": "usd",
+        "product_data": {
+          "name": "T-shirt",
+          "description": "Organic cotton"
         },
-        "quantity": 1
-      }
-    ],
-    "success_url": "https://yourstore.com/order/123/success?session_id={CHECKOUT_SESSION_ID}",
-    "cancel_url": "https://yourstore.com/order/123/cart",
-    "metadata": {
-      "order_id": "123"
-    }
+        "unit_amount": 2000
+      },
+      "quantity": 1
+    }],
+    "success_url": "https://store.example/orders/123/success?session_id={CHECKOUT_SESSION_ID}",
+    "cancel_url": "https://store.example/orders/123/cart",
+    "metadata": { "order_id": "123" }
   }'
 ```
 
-The response includes a `url` field. Redirect your customer to that URL to complete the payment.
+Response fields use snake_case:
 
-When the payment completes, the customer sees an OpenCheckout confirmation page, then is automatically forwarded to your `success_url` with `?session_id=cs_xxx&status=complete` appended.
-
----
-
-## API Authentication
-
-All `/api/checkout` endpoints require an API key passed as a Bearer token:
-
-```
-Authorization: Bearer sk_YOUR_API_KEY
-```
-
-API keys are created and managed from the merchant dashboard at `/dashboard/keys`. You can create multiple keys (e.g., "Production", "Development") and revoke them individually.
-
-Keys are hashed with SHA-256 before storage and never stored in plaintext.
-
----
-
-## Deployment
-
-### Docker
-
-```bash
-# Set required environment variables
-export ENCRYPTION_KEY=$(openssl rand -hex 32)
-export BASE_URL=https://checkout.yourdomain.com
-
-# Start
-docker compose up -d
-```
-
-OpenCheckout runs on port `3080` inside the container.
-
-### Manual Deployment
-
-```bash
-npm ci
-npm run build
-ENCRYPTION_KEY=$(openssl rand -hex 32) \
-BASE_URL=https://checkout.yourdomain.com \
-npm start
-```
-
-### Reverse Proxy
-
-Always place OpenCheckout behind a reverse proxy that terminates TLS. Wallet addresses require HTTPS.
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name checkout.yourdomain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:3080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+```json
+{
+  "id": "cs_abc123",
+  "object": "checkout.session",
+  "mode": "payment",
+  "status": "open",
+  "url": "http://localhost:3000/pay/cs_abc123",
+  "amount_total": 2000,
+  "currency": "usd",
+  "line_items": [],
+  "metadata": { "order_id": "123" },
+  "success_url": "https://store.example/orders/123/success?session_id=cs_abc123",
+  "cancel_url": "https://store.example/orders/123/cart",
+  "customer_wallet": null,
+  "incoming_payment": null,
+  "outgoing_payment": null,
+  "created_at": "2026-06-27T00:00:00.000Z",
+  "expires_at": "2026-06-28T00:00:00.000Z",
+  "completed_at": null
 }
 ```
 
----
+Redirect the customer to `url`. Confirm fulfillment through the signed webhook
+or by retrieving the session server-side; never trust the browser redirect
+alone.
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/checkout/sessions` | Create a session |
+| `GET` | `/api/checkout/sessions` | List sessions |
+| `GET` | `/api/checkout/sessions/:id` | Retrieve a session |
+| `POST` | `/api/checkout/sessions/:id/expire` | Expire an open session |
+| `POST` | `/api/checkout/sessions/:id/cancel` | Cancel an open session |
+| `GET` | `/api/health` | Process and database readiness |
+
+Checkout API requests use `Authorization: Bearer sk_...`. Browser CORS is
+disabled by default because API keys belong on your backend. If browser access
+is intentional, set `CORS_ALLOWED_ORIGINS` to a comma-separated allowlist.
+
+## Production with Docker
+
+Create `.env`:
+
+```dotenv
+ENCRYPTION_KEY=<output of: openssl rand -hex 32>
+BASE_URL=https://pay.store.example
+CORS_ALLOWED_ORIGINS=
+```
+
+Build the image, then run setup inside the same Docker volume used by the app:
+
+```bash
+docker compose build
+docker compose --profile setup run --rm \
+  -v "/absolute/path/private.pem:/run/secrets/merchant-private.pem:ro" \
+  setup
+```
+
+When prompted for the private-key path, enter
+`/run/secrets/merchant-private.pem`. Then start the service:
+
+```bash
+docker compose up -d opencheckout
+```
+
+OpenCheckout listens on port `3080`. Put it behind HTTPS with Caddy, Nginx, or
+another reverse proxy. Do not expose port 3080 publicly.
+
+Schedule maintenance every few minutes to expire abandoned sessions, clean old
+idempotency records, and replay durable webhook failures:
+
+```bash
+*/5 * * * * cd /srv/opencheckout && docker compose exec -T opencheckout node scripts/maintenance.mjs
+```
+
+## Backups and upgrades
+
+SQLite runs in WAL mode. Use SQLite's online backup API or stop the service
+before copying the database; copying only the main file while writes are active
+can produce an inconsistent backup.
+
+```bash
+docker compose stop opencheckout
+docker run --rm \
+  -v opencheckout_opencheckout_data:/data \
+  -v "$PWD/backups:/backup" \
+  alpine cp /data/opencheckout.db /backup/opencheckout-$(date +%Y%m%d).db
+docker compose start opencheckout
+```
+
+Before upgrades: back up the database, read release notes, rebuild, and verify
+`/api/health`.
+
+## Security notes
+
+- Keep `ENCRYPTION_KEY`, API keys, and wallet private keys outside the repo.
+- Dashboard authentication exchanges the API key for a short-lived,
+  encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie.
+- Redirect and webhook destinations must be public HTTPS URLs.
+- The container build excludes env files, databases, PEM files, and raw keys.
+- Dependency audit currently has no high or critical production advisories;
+  moderate upstream advisories are tracked in CI.
+
+Report vulnerabilities privately to the maintainer rather than opening a public
+issue.
+
+## Quality checks
+
+```bash
+npm run check       # lint + unit/contract tests + production build
+cd docs && npm run build
+docker compose config
+```
+
+GitHub Actions runs the application checks, docs build, production audit, and a
+clean Docker build on pull requests.
 
 ## Documentation
 
-Full documentation is available at [opencheckout.dev](https://opencheckout.dev) (source in `docs/`):
+The documentation site is published at
+[temidayoxyz.github.io/opencheckout](https://temidayoxyz.github.io/opencheckout/).
+Its source lives in [`docs/`](docs/).
 
-- [Getting Started](https://opencheckout.dev/getting-started) — wallet setup, installation, configuration
-- [API Reference](https://opencheckout.dev/api-reference) — complete endpoint documentation with request/response schemas
-- [Integration Guide](https://opencheckout.dev/integration-guide) — backend and frontend integration patterns for ecommerce, donations, subscriptions, and marketplaces
-- [Dashboard Guide](https://opencheckout.dev/dashboard-guide) — how to use the merchant dashboard
-- [Architecture](https://opencheckout.dev/architecture) — how OpenCheckout works internally
-- [Security](https://opencheckout.dev/security) — key management, request signing, encryption, and webhook verification
-- [Deployment](https://opencheckout.dev/deployment) — Docker, manual, reverse proxy, and database backup
-- [FAQ](https://opencheckout.dev/faq) — common questions
+## Project layout
 
----
-
-## Project Structure
-
+```text
+src/app/                    Next.js pages and route handlers
+src/components/checkout/    Customer checkout UI
+src/lib/checkout/           Sessions, state machine, currency, idempotency
+src/lib/open-payments/      Open Payments orchestration
+src/lib/merchant/           API and dashboard authentication
+src/lib/webhook/            Signed webhook delivery
+src/lib/crypto/             Encryption, signatures, URL safety
+src/lib/db/                 SQLite and Drizzle schema
+scripts/                    Setup and schema bootstrap
+tests/                      Unit and public-contract regression tests
+docs/                       Astro Starlight documentation
 ```
-opencheckout/
-├── src/
-│   ├── app/
-│   │   ├── api/checkout/sessions/     # Merchant API endpoints
-│   │   ├── api/dashboard/             # Dashboard API endpoints
-│   │   ├── api/health/                # Health check endpoint
-│   │   ├── pay/[sessionId]/           # Customer checkout page + grant callback
-│   │   └── dashboard/                 # Merchant dashboard UI
-│   ├── lib/
-│   │   ├── checkout/                  # Session management, state machine, idempotency
-│   │   ├── open-payments/             # Open Payments SDK orchestration
-│   │   ├── merchant/                  # Authentication and onboarding
-│   │   ├── webhook/                   # Webhook delivery and signature verification
-│   │   ├── crypto/                    # AES-256-GCM, HMAC, ID generation
-│   │   └── db/                        # Drizzle ORM schemas and connection
-│   ├── components/checkout/           # Checkout page UI components
-│   └── middleware.ts                  # Security headers and CORS
-├── docs/                              # Starlight documentation site
-├── scripts/setup.mjs                  # Merchant setup wizard
-├── docker-compose.yml
-├── Dockerfile
-└── .github/workflows/                 # CI/CD
-```
-
----
 
 ## License
 
-GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
-
-If you modify OpenCheckout and make it available as a network service, you must make your modifications available under the same license.
+GNU Affero General Public License v3.0. See [`LICENSE`](LICENSE).

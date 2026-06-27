@@ -1,7 +1,4 @@
-import type {
-  AuthenticatedClient,
-  Quote,
-} from "@interledger/open-payments";
+import type { Quote } from "@interledger/open-payments";
 import { getMerchantClient } from "./client";
 import { getMerchantPrivateKey } from "@/lib/merchant/onboarding";
 import { resolveWalletAddress } from "./wallet-address";
@@ -52,8 +49,6 @@ export async function createQuote(params: CreateQuoteParams): Promise<Quote> {
 
   // Get sender wallet address info to discover their resource server
   const senderWallet = await resolveWalletAddress(params.walletAddress);
-  const merchantWallet = await resolveWalletAddress(keys.walletAddress);
-
   // We need to request a quote grant from the sender's auth server
   // But the sender is the customer, not the merchant. The merchant's client
   // requests the quote on behalf of the customer.

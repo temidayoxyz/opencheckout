@@ -1,10 +1,9 @@
 import { getDb, schema } from "@/lib/db";
-import { generateApiKey, hashApiKey } from "./auth";
-import { encryptPrivateKey } from "@/lib/crypto/keys";
+import { generateApiKey } from "./auth";
+import { encryptPrivateKey, encryptStoredSecret } from "@/lib/crypto/keys";
 import {
   generateMerchantId,
   generateApiKeyId,
-  generateWebhookEventId,
 } from "@/lib/crypto/ids";
 import { generateWebhookSecret } from "@/lib/crypto/hmac";
 import { eq } from "drizzle-orm";
@@ -34,7 +33,7 @@ export async function onboardMerchant(
     walletAddress: params.walletAddress,
     privateKey: encryptedKey,
     keyId: params.keyId,
-    webhookSecret,
+    webhookSecret: encryptStoredSecret(webhookSecret),
   });
 
   // Generate initial API key

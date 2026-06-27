@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateApiKey } from "@/lib/merchant/auth";
+import {
+  authenticateDashboardRequest,
+  isTrustedDashboardMutation,
+} from "@/lib/merchant/dashboard-auth";
 import { getDb, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { generateWebhookSecret } from "@/lib/crypto/hmac";
-import { isSafePublicUrl } from "@/lib/crypto/url-validation";
+import { assertSafePublicUrl } from "@/lib/crypto/url-validation";
+import {
+  decryptStoredSecret,
+  encryptStoredSecret,
+} from "@/lib/crypto/keys";
 
 /**
  * GET /api/dashboard/settings
  * Get merchant settings (webhook URL, webhook secret masked).
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
+  const merchant = await authenticateDashboardRequest(request);
   if (!merchant) {
     return NextResponse.json(
       { error: { message: "Invalid API key" } },
@@ -22,7 +28,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     webhook_url: merchant.webhookUrl ?? "",
     webhook_secret_masked: merchant.webhookSecret
-      ? `${merchant.webhookSecret.substring(0, 8)}...`
+      ? `${decryptStoredSecret(merchant.webhookSecret).substring(0, 8)}...`
       : "",
   });
 }
@@ -32,8 +38,14 @@ export async function GET(request: NextRequest) {
  * Update merchant settings (webhook URL, regenerate secret).
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
+  if (!isTrustedDashboardMutation(request)) {
+    return NextResponse.json(
+      { error: { message: "Invalid request origin" } },
+      { status: 403 }
+    );
+  }
+
+  const merchant = await authenticateDashboardRequest(request);
   if (!merchant) {
     return NextResponse.json(
       { error: { message: "Invalid API key" } },
@@ -55,18 +67,29 @@ export async function POST(request: NextRequest) {
   let newSecret: string | null = null;
 
   if (body.webhook_url !== undefined) {
-    if (body.webhook_url !== "" && !isSafePublicUrl(body.webhook_url)) {
-      return NextResponse.json(
-        { error: { message: "Invalid webhook URL. Must be a public HTTPS URL." } },
-        { status: 400 }
-      );
+    if (body.webhook_url !== "") {
+      try {
+        await assertSafePublicUrl(body.webhook_url);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            error: {
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Invalid webhook URL. Must be a public HTTPS URL.",
+            },
+          },
+          { status: 400 }
+        );
+      }
     }
     updates.webhookUrl = body.webhook_url;
   }
 
   if (body.regenerate_secret) {
     newSecret = generateWebhookSecret();
-    updates.webhookSecret = newSecret;
+    updates.webhookSecret = encryptStoredSecret(newSecret);
   }
 
   if (Object.keys(updates).length > 0) {

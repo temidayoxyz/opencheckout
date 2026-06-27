@@ -5,6 +5,10 @@ description: Integrate OpenCheckout into your website or application.
 
 ## Basic Integration
 
+Create sessions from your backend. Do not expose an OpenCheckout API key in
+browser JavaScript. Browser CORS access is disabled unless an operator
+explicitly configures `CORS_ALLOWED_ORIGINS`.
+
 ### 1. Backend: Create a session
 
 When a customer wants to check out, your backend creates a session via the OpenCheckout API:
@@ -91,41 +95,9 @@ app.post("/webhooks/opencheckout", (req, res) => {
 
 The `payment` mode handles one-time purchases. Create a session with line items, redirect the customer, and fulfill on completion.
 
-### Donations
+### Donations and subscriptions
 
-Use `donation` mode without an `incomingAmount` to accept open-ended contributions:
-
-```json
-{
-  "mode": "donation",
-  "line_items": [{
-    "price_data": {
-      "currency": "usd",
-      "product_data": { "name": "Donation" },
-      "unit_amount": 100
-    },
-    "quantity": 1
-  }]
-}
-```
-
-### Subscriptions
-
-Use `subscription` mode with a recurring interval in the grant request:
-
-```json
-{
-  "mode": "subscription",
-  "line_items": [{
-    "price_data": {
-      "currency": "usd",
-      "product_data": { "name": "Monthly Plan" },
-      "unit_amount": 999
-    },
-    "quantity": 1
-  }]
-}
-```
+OpenCheckout currently supports one-time `payment` sessions. Donation and subscription modes are intentionally rejected by the API until those flows have complete Open Payments orchestration, dashboard reporting, and webhook semantics.
 
 ### Marketplaces
 
@@ -142,4 +114,5 @@ For marketplace scenarios where you split payments:
 | 401 | `authentication_error` | Invalid or missing API key |
 | 400 | `invalid_request_error` | Malformed request body |
 | 404 | `not_found` | Session not found |
+| 409 | `idempotency_error` | Key is in progress or was reused with a different request |
 | 500 | `api_error` | Server error — retry |

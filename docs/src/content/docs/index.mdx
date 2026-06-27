@@ -1,10 +1,10 @@
 ---
 title: OpenCheckout
-description: Open-source, self-hosted checkout powered by Open Payments. No per-transaction fees, full data ownership.
+description: Checkout orchestration powered by Open Payments, with a REST API and deployment you control.
 template: splash
 ---
 
-OpenCheckout is an open-source, self-hosted checkout system for accepting payments on the web. It provides a hosted checkout page and a Stripe-compatible API that you deploy on your own infrastructure. Your customers pay using their [Open Payments](https://openpayments.dev) wallet address.
+OpenCheckout is an open-source, self-hosted checkout system for accepting payments on the web. It provides a hosted checkout page and a Checkout Sessions REST API that you deploy on your own infrastructure. Your customers pay using their [Open Payments](https://openpayments.dev) wallet address.
 
 <div class="hero-actions">
   <a href="/opencheckout/introduction/" class="hero-button">Read the docs</a>
@@ -16,21 +16,21 @@ OpenCheckout is an open-source, self-hosted checkout system for accepting paymen
 <div class="landing-grid">
   <div class="landing-card">
     <h3>Self-hosted</h3>
-    <p>Deploy on your own infrastructure with a single Docker command. Runs anywhere — VPS, homelab, or cloud.</p>
+    <p>Deploy on your own infrastructure with Docker Compose and automatic SQLite schema bootstrap. Runs anywhere — VPS, homelab, or cloud.</p>
   </div>
   <div class="landing-card">
-    <h3>No per-transaction fees</h3>
-    <p>Keep every dollar you earn. Open Payments moves money directly between wallets with no intermediary taking a cut.</p>
+    <h3>No OpenCheckout transaction fee</h3>
+    <p>OpenCheckout does not add a per-transaction fee. Account providers may still charge fees or apply exchange rates.</p>
   </div>
   <div class="landing-card">
-    <h3>Stripe-compatible API</h3>
-    <p>The checkout sessions endpoint your developers already know. Drop-in replacement with no vendor lock-in.</p>
+    <h3>REST API</h3>
+    <p>Create checkout sessions, track payment progress, and return customers to your store when payment is complete.</p>
   </div>
 </div>
 
 ---
 
 <div class="cta-section">
-  <p>Self-host your payments. Own your data. Zero per-transaction fees.</p>
+  <p>Run checkout orchestration on your infrastructure and keep control of your payment data.</p>
   <a href="/opencheckout/introduction/" class="hero-button">Get started</a>
 </div>

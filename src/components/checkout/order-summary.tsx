@@ -1,3 +1,5 @@
+import { getCurrencyScale } from "@/lib/checkout/currency";
+
 interface LineItem {
   priceData: {
     currency: string;
@@ -15,12 +17,13 @@ interface OrderSummaryProps {
 }
 
 function formatAmount(amount: number, currency: string): string {
+  const scale = getCurrencyScale(currency);
   const formatter = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),
-    minimumFractionDigits: 2,
+    minimumFractionDigits: scale,
   });
-  return formatter.format(amount / 100);
+  return formatter.format(amount / Math.pow(10, scale));
 }
 
 export function OrderSummary({
@@ -30,8 +33,7 @@ export function OrderSummary({
   merchantName,
 }: OrderSummaryProps) {
   return (
-    <div className="color-block color-block-cream">
-      {/* Merchant name as eyebrow */}
+    <div className="glass-card">
       <p className="font-mono text-xs uppercase tracking-[0.6px] text-ink-soft mb-4">
         {merchantName}
       </p>

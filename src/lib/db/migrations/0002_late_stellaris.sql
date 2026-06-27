@@ -1,0 +1,1 @@
+ALTER TABLE `checkout_sessions` ADD `preparation_started_at` text;

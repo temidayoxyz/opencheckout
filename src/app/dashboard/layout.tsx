@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Receipt, Key, Settings, LogOut } from "lucide-react";
 
@@ -11,29 +13,33 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const cookies = document.cookie.split("; ");
-    const authCookie = cookies.find((c) => c.startsWith("oc_api_key="));
-    if (!authCookie && pathname !== "/dashboard") {
-      router.replace("/dashboard");
-      return;
+    if (pathname === "/dashboard") return;
+
+    let active = true;
+
+    async function checkSession() {
+      try {
+        const response = await fetch("/api/dashboard/session", {
+          cache: "no-store",
+        });
+        if (active && response.status === 401) router.replace("/dashboard");
+      } catch {
+        if (active) router.replace("/dashboard");
+      }
     }
-    setLoading(false);
+
+    void checkSession();
+    return () => {
+      active = false;
+    };
   }, [pathname, router]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-canvas flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  function logout() {
-    document.cookie = "oc_api_key=; Max-Age=0; path=/";
+  async function logout() {
+    await fetch("/api/dashboard/session", { method: "DELETE" });
     router.replace("/dashboard");
+    router.refresh();
   }
 
   const navItems = [
@@ -43,40 +49,42 @@ export default function DashboardLayout({
   ];
 
   return (
-    <div className="min-h-screen bg-canvas">
-      {/* Top nav — clean monochrome bar */}
-      <nav className="sticky top-0 z-10 bg-canvas border-b border-hairline h-14 flex items-center">
-        <div className="max-w-5xl mx-auto w-full px-6 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <img
+    <div className="min-h-screen bg-canvas liquid-bg">
+      <nav className="sticky top-0 z-10 border-b border-white/60 bg-white/60 backdrop-blur-2xl">
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 py-3 flex flex-col gap-3 md:h-16 md:flex-row md:items-center md:justify-between md:py-0">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-8">
+            <Image
               src="/logo-light.png"
               alt="OpenCheckout"
-              className="h-16 w-auto"
+              width={873}
+              height={286}
+              priority
+              className="h-12 w-auto"
             />
-            <div className="flex gap-1">
+            <div className="flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/70 bg-white/55 p-1 shadow-[0_12px_40px_rgba(17,24,39,0.08)] backdrop-blur-xl">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = pathname === item.href;
                 return (
-                  <a
+                  <Link
                     key={item.href}
                     href={item.href}
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-[400] transition-colors ${
+                    className={`inline-flex shrink-0 items-center gap-2 px-3 py-1.5 rounded-full text-sm font-[400] transition-colors ${
                       active
                         ? "bg-primary text-on-primary"
-                        : "text-ink-soft hover:text-ink"
+                        : "text-ink-soft hover:bg-white/70 hover:text-ink"
                     }`}
                   >
                     <Icon className="w-4 h-4" />
                     {item.label}
-                  </a>
+                  </Link>
                 );
               })}
             </div>
           </div>
           <button
             onClick={logout}
-            className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink font-[400] transition-colors"
+            className="inline-flex items-center gap-1.5 self-start rounded-full px-3 py-2 text-sm text-ink-soft hover:bg-white/70 hover:text-ink font-[400] transition-colors md:self-auto"
           >
             <LogOut className="w-4 h-4" />
             Log out
@@ -84,7 +92,9 @@ export default function DashboardLayout({
         </div>
       </nav>
 
-      <main className="max-w-5xl mx-auto px-6 py-12">{children}</main>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-10 md:py-12">
+        {children}
+      </main>
     </div>
   );
 }

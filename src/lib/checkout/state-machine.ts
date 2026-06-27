@@ -2,9 +2,13 @@
  * Checkout session state machine.
  *
  * Valid transitions:
- *   open       → completed  (payment successful)
- *   open       → expired    (time-based expiry)
- *   open       → canceled   (merchant or customer cancels)
+ *   open -> preparing   (wallet submission claimed; resources are being prepared)
+ *   preparing -> open   (preparation failed safely and can be retried)
+ *   preparing -> awaiting_approval (interactive grant is ready)
+ *   awaiting_approval -> processing (customer approved; payment creation claimed)
+ *   open -> expired     (time-based expiry)
+ *   open -> canceled    (merchant or customer cancels)
+ *   processing -> completed (payment instruction created)
  *
  * Terminal states: completed, expired, canceled
  * From terminal states: no transitions allowed.
@@ -12,6 +16,9 @@
 
 export const SESSION_STATUS = {
   OPEN: "open" as const,
+  PREPARING: "preparing" as const,
+  AWAITING_APPROVAL: "awaiting_approval" as const,
+  PROCESSING: "processing" as const,
   COMPLETED: "completed" as const,
   EXPIRED: "expired" as const,
   CANCELED: "canceled" as const,
@@ -22,10 +29,21 @@ export type SessionStatus =
 
 const VALID_TRANSITIONS: Record<SessionStatus, SessionStatus[]> = {
   [SESSION_STATUS.OPEN]: [
-    SESSION_STATUS.COMPLETED,
+    SESSION_STATUS.PREPARING,
     SESSION_STATUS.EXPIRED,
     SESSION_STATUS.CANCELED,
   ],
+  [SESSION_STATUS.PREPARING]: [
+    SESSION_STATUS.OPEN,
+    SESSION_STATUS.AWAITING_APPROVAL,
+    SESSION_STATUS.EXPIRED,
+  ],
+  [SESSION_STATUS.AWAITING_APPROVAL]: [
+    SESSION_STATUS.PROCESSING,
+    SESSION_STATUS.EXPIRED,
+    SESSION_STATUS.CANCELED,
+  ],
+  [SESSION_STATUS.PROCESSING]: [SESSION_STATUS.COMPLETED],
   [SESSION_STATUS.COMPLETED]: [],
   [SESSION_STATUS.EXPIRED]: [],
   [SESSION_STATUS.CANCELED]: [],
@@ -50,9 +68,7 @@ export function transition(
   newStatus: SessionStatus
 ): SessionStatus {
   if (!isValidTransition(currentStatus, newStatus)) {
-    throw new Error(
-      `Invalid state transition: ${currentStatus} → ${newStatus}`
-    );
+    throw new Error(`Invalid state transition: ${currentStatus} -> ${newStatus}`);
   }
   return newStatus;
 }

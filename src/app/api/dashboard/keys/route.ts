@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateApiKey, generateApiKey } from "@/lib/merchant/auth";
+import { generateApiKey } from "@/lib/merchant/auth";
+import {
+  authenticateDashboardRequest,
+  isTrustedDashboardMutation,
+} from "@/lib/merchant/dashboard-auth";
 import { getDb, schema } from "@/lib/db";
 import { generateApiKeyId } from "@/lib/crypto/ids";
 import { eq, and, isNull } from "drizzle-orm";
@@ -9,8 +13,7 @@ import { eq, and, isNull } from "drizzle-orm";
  * List API keys for the authenticated merchant.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
+  const merchant = await authenticateDashboardRequest(request);
   if (!merchant) {
     return NextResponse.json(
       { error: { message: "Invalid API key" } },
@@ -37,8 +40,14 @@ export async function GET(request: NextRequest) {
  * Create a new API key for the authenticated merchant.
  */
 export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
+  if (!isTrustedDashboardMutation(request)) {
+    return NextResponse.json(
+      { error: { message: "Invalid request origin" } },
+      { status: 403 }
+    );
+  }
+
+  const merchant = await authenticateDashboardRequest(request);
   if (!merchant) {
     return NextResponse.json(
       { error: { message: "Invalid API key" } },
@@ -56,6 +65,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const name = body.name?.trim();
+  if (!name || name.length > 80) {
+    return NextResponse.json(
+      { error: { message: "Key name must be between 1 and 80 characters" } },
+      { status: 400 }
+    );
+  }
+
   const { plaintext, hash } = generateApiKey();
   const id = generateApiKeyId();
 
@@ -63,11 +80,11 @@ export async function POST(request: NextRequest) {
     id,
     merchantId: merchant.id,
     keyHash: hash,
-    name: body.name ?? "Unnamed",
+    name,
   });
 
   return NextResponse.json(
-    { id, name: body.name ?? "Unnamed", plaintext },
+    { id, name, plaintext },
     { status: 201 }
   );
 }
@@ -77,8 +94,14 @@ export async function POST(request: NextRequest) {
  * Revoke an API key.
  */
 export async function DELETE(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  const merchant = await authenticateApiKey(authHeader);
+  if (!isTrustedDashboardMutation(request)) {
+    return NextResponse.json(
+      { error: { message: "Invalid request origin" } },
+      { status: 403 }
+    );
+  }
+
+  const merchant = await authenticateDashboardRequest(request);
   if (!merchant) {
     return NextResponse.json(
       { error: { message: "Invalid API key" } },
@@ -111,6 +134,22 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       { error: { message: "Key not found" } },
       { status: 404 }
+    );
+  }
+
+  const activeKeys = await getDb()
+    .select({ id: schema.apiKeys.id })
+    .from(schema.apiKeys)
+    .where(
+      and(
+        eq(schema.apiKeys.merchantId, merchant.id),
+        isNull(schema.apiKeys.revokedAt)
+      )
+    );
+  if (activeKeys.length <= 1) {
+    return NextResponse.json(
+      { error: { message: "Create another active key before revoking this one" } },
+      { status: 400 }
     );
   }
 

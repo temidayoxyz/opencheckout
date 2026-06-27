@@ -8,7 +8,7 @@ const SALT_LENGTH = 32;
 
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
-  if (!key || key.length !== 64) {
+  if (!key || !/^[a-f0-9]{64}$/i.test(key)) {
     throw new Error(
       "ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes)"
     );
@@ -62,4 +62,20 @@ export function decryptPrivateKey(encoded: string): string {
     decipher.update(ciphertext),
     decipher.final(),
   ]).toString("utf8");
+}
+
+const STORED_SECRET_PREFIX = "enc:v1:";
+
+/** Encrypt an arbitrary secret while preserving backwards-compatible reads. */
+export function encryptStoredSecret(plaintext: string): string {
+  return `${STORED_SECRET_PREFIX}${encryptPrivateKey(plaintext)}`;
+}
+
+/**
+ * Decrypt secrets written by encryptStoredSecret. Legacy plaintext values are
+ * returned unchanged so existing installations can migrate on their next write.
+ */
+export function decryptStoredSecret(value: string): string {
+  if (!value.startsWith(STORED_SECRET_PREFIX)) return value;
+  return decryptPrivateKey(value.slice(STORED_SECRET_PREFIX.length));
 }

@@ -20,10 +20,8 @@ interface SessionData {
     quantity: number;
   }>;
   mode: string;
-  merchantId: string;
-  continueAccessToken?: string | null;
-  customerWallet?: string | null;
-  incomingPaymentUrl?: string | null;
+  hasPendingGrant: boolean;
+  pendingApprovalUrl?: string;
 }
 
 interface CheckoutPageProps {
@@ -31,44 +29,63 @@ interface CheckoutPageProps {
   merchantName: string;
 }
 
+type CheckoutStep =
+  | "review"
+  | "preparing"
+  | "pending"
+  | "processing"
+  | "error";
+
 export function CheckoutPage({ session, merchantName }: CheckoutPageProps) {
-  const [step, setStep] = useState<"review" | "processing" | "error">("review");
-  const [error, setError] = useState("");
+  const [step, setStep] = useState<CheckoutStep>(() => {
+    if (session.status === "preparing") return "preparing";
+    if (
+      session.status === "awaiting_approval" ||
+      session.hasPendingGrant
+    ) {
+      return "pending";
+    }
+    if (session.status === "processing") return "processing";
+    return "review";
+  });
   const [recovering, setRecovering] = useState(false);
   const [recoveryMsg, setRecoveryMsg] = useState("");
 
-  const isExpired = session.status !== "open";
-  const hasPendingGrant = !!(
-    session.continueAccessToken && session.customerWallet
+  const isInactive = ["completed", "expired", "canceled"].includes(
+    session.status
   );
 
   async function attemptRecovery() {
     setRecovering(true);
     setRecoveryMsg("");
+
     try {
       const res = await fetch(`/api/checkout/sessions/${session.id}/recover`, {
         method: "POST",
       });
       const data = await res.json();
-      if (data.recovered) {
-        setRecoveryMsg(data.message || "Payment status checked");
-        if (data.action === "expired") window.location.reload();
-      } else {
-        setStep("review");
-        setRecoveryMsg("");
+      setRecoveryMsg(data.message || "Payment status checked");
+
+      if (data.action === "expired") window.location.reload();
+      if (data.action === "completed") {
+        window.location.assign(`/pay/${session.id}/success`);
+      }
+      if (data.action === "resume_approval" && data.interact_url) {
+        window.location.assign(data.interact_url);
       }
     } catch {
       setRecoveryMsg("Could not check payment status");
+    } finally {
+      setRecovering(false);
     }
-    setRecovering(false);
   }
 
-  if (isExpired) {
+  if (isInactive) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
+      <div className="min-h-screen flex items-center justify-center bg-canvas liquid-bg p-4">
         <div className="max-w-md w-full">
-          <div className="color-block color-block-cream text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-canvas mb-6">
+          <div className="glass-card text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/70 border border-white/70 mb-6">
               <AlertCircle className="w-8 h-8 text-ink" />
             </div>
             <h1 className="text-[26px] font-[600] tracking-[-0.26px] text-ink mb-3">
@@ -85,16 +102,14 @@ export function CheckoutPage({ session, merchantName }: CheckoutPageProps) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
+    <div className="min-h-screen flex items-center justify-center bg-canvas liquid-bg p-4">
       <div className="max-w-md w-full">
-        {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-[26px] font-[600] tracking-[-0.26px] text-ink leading-tight">
             Complete Your Payment
           </h1>
         </div>
 
-        {/* Order Summary — color block */}
         <OrderSummary
           lineItems={session.lineItems}
           amountTotal={session.amountTotal}
@@ -102,41 +117,49 @@ export function CheckoutPage({ session, merchantName }: CheckoutPageProps) {
           merchantName={merchantName}
         />
 
-        {/* Wallet Input */}
-        <WalletInput
-          sessionId={session.id}
-          amountTotal={session.amountTotal}
-          currency={session.currency}
-          onSubmit={() => setStep("processing")}
-          disabled={step === "processing"}
-        />
+        {step === "review" && (
+          <WalletInput
+            sessionId={session.id}
+            amountTotal={session.amountTotal}
+            currency={session.currency}
+            onSubmit={() => setStep("processing")}
+          />
+        )}
 
-        {/* Pending grant recovery — simple button below Pay */}
-        {hasPendingGrant && (
-          <div className="mt-4">
+        {(step === "pending" || step === "processing") && (
+          <div className="mt-6 glass-panel rounded-2xl p-5">
+            <p className="text-base text-ink-soft font-[320]">
+              {step === "pending"
+                ? "Your payment is ready for approval at your wallet provider."
+                : "Your payment is being confirmed. Do not submit another payment."}
+            </p>
+            {step === "pending" && session.pendingApprovalUrl && (
+              <a
+                href={session.pendingApprovalUrl}
+                className="btn-primary mt-4 w-full justify-center"
+              >
+                Continue approval
+              </a>
+            )}
             <button
               onClick={attemptRecovery}
               disabled={recovering}
-              className="btn-secondary w-full justify-center text-base py-2.5 disabled:opacity-30"
+              className="btn-secondary mt-3 w-full justify-center text-base py-2.5 disabled:opacity-30"
             >
               {recovering ? "Checking…" : "Check Payment Status"}
             </button>
             {recoveryMsg && (
-              <p className="mt-2 text-sm text-ink-soft text-center">{recoveryMsg}</p>
+              <p className="mt-3 text-sm text-ink-soft text-center">
+                {recoveryMsg}
+              </p>
             )}
           </div>
         )}
 
-        {step === "processing" && (
+        {step === "preparing" && (
           <div className="mt-4 flex items-center gap-3 text-base text-ink-soft font-[320] bg-surface-soft rounded-lg p-4">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            Redirecting you to your wallet provider to approve payment…
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-4 text-sm text-accent-magenta font-[400] bg-block-pink rounded-lg p-3">
-            {error}
+            Preparing your secure payment…
           </div>
         )}
 

@@ -6,7 +6,8 @@ import { createHash } from "crypto";
  * Per the GNAP / Open Payments specification, the hash is computed as:
  *   SHA-256(clientNonce + "\n" + serverNonce + "\n" + interactRef + "\n" + authServerUrl)
  *
- * Base64-encoded with no padding.
+ * Base64-encoded. Some authorization servers include padding while others
+ * follow the unpadded text in the spec, so comparison normalizes both forms.
  */
 export function verifyInteractionHash(params: {
   clientNonce: string;
@@ -19,14 +20,27 @@ export function verifyInteractionHash(params: {
     params;
 
   // Server nonce might not be present in all implementations
-  const hashBase = [
-    clientNonce,
-    serverNonce ?? "",
-    interactRef,
-    authServerUrl,
-  ].join("\n");
+  const serverNonceValue = serverNonce ?? "";
+  const authServerUrlVariants = authServerUrl.endsWith("/")
+    ? [authServerUrl, authServerUrl.slice(0, -1)]
+    : [authServerUrl, `${authServerUrl}/`];
 
-  const computed = createHash("sha256").update(hashBase).digest("base64");
+  const received = normalizeHash(receivedHash);
 
-  return computed === receivedHash;
+  return authServerUrlVariants.some((authServerUrlVariant) => {
+    const hashBase = [
+      clientNonce,
+      serverNonceValue,
+      interactRef,
+      authServerUrlVariant,
+    ].join("\n");
+
+    const computed = createHash("sha256").update(hashBase).digest("base64");
+
+    return normalizeHash(computed) === received;
+  });
+}
+
+function normalizeHash(value: string): string {
+  return value.replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/g, "");
 }

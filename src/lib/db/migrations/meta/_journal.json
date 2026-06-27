@@ -8,6 +8,20 @@
       "when": 1781546684456,
       "tag": "0000_handy_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782569105330,
+      "tag": "0001_melted_karnak",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782570124650,
+      "tag": "0002_late_stellaris",
+      "breakpoints": true
     }
   ]
 }

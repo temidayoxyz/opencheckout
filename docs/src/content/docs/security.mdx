@@ -29,10 +29,11 @@ When a request arrives, the provided key is hashed and compared against the stor
 - Active keys authenticate API requests
 - Revoked keys are permanently invalidated
 - Revocation is immediate and irreversible
+- Dashboard sign-in exchanges the API key for an eight-hour, encrypted `HttpOnly`, `Secure`, `SameSite=Strict` cookie; client-side JavaScript cannot read it
 
 ## Private Key Encryption
 
-Each merchant has an Ed25519 private key used to sign Open Payments API requests. This key is encrypted at rest in the database using AES-256-GCM.
+Each merchant has an Ed25519 private key used to sign Open Payments API requests. Private keys, webhook secrets, and pending grant continuation credentials are encrypted at rest using AES-256-GCM. Grant credentials are purged after completion.
 
 ### Encryption Scheme
 
@@ -51,7 +52,7 @@ Each merchant has an Ed25519 private key used to sign Open Payments API requests
 - The `ENCRYPTION_KEY` environment variable must be a 64-character hex string (32 bytes)
 - Generate it with: `openssl rand -hex 32`
 - Store it securely. If lost, all merchant private keys become unrecoverable
-- Rotate by re-running the setup wizard with a new key
+- Encryption-key rotation requires decrypting and re-encrypting stored secrets during a planned maintenance operation; re-running setup creates another merchant and is not a rotation procedure
 
 ## HTTP Message Signatures
 
@@ -99,8 +100,8 @@ To verify a webhook on your backend:
 ### Secret Management
 
 - The webhook secret is a 32-byte random value, generated with `crypto.randomBytes()`
-- It is stored in the database and never exposed in API responses — only a masked prefix is shown
-- Regenerate from the dashboard at `/dashboard/settings`
+- It is encrypted in the database. A masked prefix is shown during normal reads
+- Regeneration returns the new plaintext once so it can be copied, then subsequent reads are masked
 
 ## Redirect Security
 
@@ -108,7 +109,7 @@ To verify a webhook on your backend:
 
 Every redirect URL is validated before use:
 
-- Must use `http:` or `https:` protocol (blocks `javascript:`, `data:`, `file:`)
+- Must use `https:` (blocks `http:`, `javascript:`, `data:`, and `file:`)
 - Must parse as a valid URL
 - `success_url` and `cancel_url` are validated at session creation via Zod's `.url()` check
 - The success page performs an additional protocol check before executing `window.location.href`
@@ -123,13 +124,13 @@ expected = SHA-256(client_nonce + "\n" + server_nonce + "\n" + interact_ref + "\
 
 This confirms that the redirect genuinely originated from the authorization server and was not forged.
 
-If hash verification fails, OpenCheckout logs a warning but still proceeds with the grant continuation. The grant continuation token provides the primary security guarantee; the hash is defense-in-depth.
+If hash verification fails, OpenCheckout fails closed and does not continue the grant or create an outgoing payment.
 
 ## Server-Side Request Forgery (SSRF) Prevention
 
-Webhook URLs are validated before storage:
+Wallet, webhook, incoming-payment, and merchant redirect URLs are validated before server-side use:
 
-- Must use `http:` or `https:` protocol
+- Must use `https:`
 - Blocked: `localhost`, `127.0.0.1`, `::1`
 - Blocked: private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
 - Blocked: link-local addresses (169.254.0.0/16)
@@ -143,6 +144,9 @@ Every API response includes:
 | `X-Content-Type-Options` | `nosniff` | Prevent MIME type sniffing |
 | `X-Frame-Options` | `DENY` | Prevent clickjacking |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | Control referrer information |
+| `Content-Security-Policy` | Restrictive, with development-only `unsafe-eval` | Limit script, frame, object, and connection sources |
+| `Permissions-Policy` | Camera, microphone, location, and payment disabled | Disable unused browser capabilities |
+| `Strict-Transport-Security` | One year in production | Enforce HTTPS |
 
 ## Server Hardening
 
@@ -150,6 +154,7 @@ Every API response includes:
 - The SQLite database uses WAL mode with foreign keys enforced
 - Console error logging captures failures without exposing secrets
 - No development dependencies are included in the production Docker image
+- Environment files, databases, PEM files, and raw keys are excluded from the Docker build context
 - The `@interledger/open-payments` and `better-sqlite3` packages are excluded from Turbopack bundling to preserve native module compatibility
 
 ## Reporting Security Issues

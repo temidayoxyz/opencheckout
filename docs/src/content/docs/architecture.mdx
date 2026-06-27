@@ -21,7 +21,7 @@ OpenCheckout is a Next.js application that orchestrates the [Open Payments](http
 │  │       Checkout Engine             │              │
 │  │  ┌──────────┐  ┌───────────────┐ │              │
 │  │  │ Session  │  │ State Machine │ │              │
-│  │  │ Manager  │  │ open→complete │ │              │
+│  │  │ Manager  │  │ guarded flow  │ │              │
 │  │  └──────────┘  └───────────────┘ │              │
 │  └──────┬───────────────────────────┘              │
 │         │                                           │
@@ -49,8 +49,8 @@ OpenCheckout is a Next.js application that orchestrates the [Open Payments](http
 The checkout engine manages the lifecycle of every checkout session. It consists of:
 
 - **Session Manager** (`src/lib/checkout/sessions.ts`) — Creates, retrieves, and updates sessions in the database. Handles pagination, session expiry, and Open Payments reference tracking.
-- **State Machine** (`src/lib/checkout/state-machine.ts`) — Enforces valid state transitions. A session can only move from `open` to `completed`, `expired`, or `canceled`. Terminal states cannot be changed.
-- **Idempotency** (`src/lib/checkout/idempotency.ts`) — Stores SHA-256 hashes of `Idempotency-Key` headers. Duplicate requests within 24 hours return the cached response.
+- **State Machine** (`src/lib/checkout/state-machine.ts`) — Enforces preparation, approval, processing, completion, expiry, and cancellation transitions. Terminal states cannot be changed.
+- **Idempotency** (`src/lib/checkout/idempotency.ts`) — Stores merchant-scoped hashes of `Idempotency-Key` headers. Duplicate requests within 24 hours return the cached response and expired records are cleaned opportunistically.
 
 ### Open Payments Orchestrator
 
@@ -65,18 +65,19 @@ The orchestrator (`src/lib/open-payments/`) wraps the `@interledger/open-payment
 
 ### Database
 
-OpenCheckout uses **SQLite** with WAL mode enabled for concurrent read performance. The schema is managed by **Drizzle ORM** and contains four tables:
+OpenCheckout uses **SQLite** with WAL mode enabled for concurrent read performance. The schema is managed by **Drizzle ORM** and contains five core tables:
 
 - `merchants` — merchant accounts with encrypted private keys
 - `api_keys` — SHA-256 hashed API keys for authentication
 - `checkout_sessions` — the core entity with session state, line items, and Open Payments references
+- `idempotency_keys` — request reservations and cached API responses
 - `webhook_events` — delivery log for outbound webhook attempts
 
 No separate database server is required. The SQLite file is stored at the path configured by `DATABASE_URL`.
 
 ### Webhook Delivery
 
-When a session completes, the webhook engine (`src/lib/webhook/deliver.ts`) POSTs a JSON payload to the merchant's configured webhook URL with an `OpenCheckout-Signature` header. Delivery is attempted up to 3 times with exponential backoff (1s, 2s, 4s delays).
+When a session completes, the webhook engine (`src/lib/webhook/deliver.ts`) stores an event and POSTs a signed JSON payload to the merchant's configured URL. Delivery is attempted up to 3 times immediately. The authenticated maintenance job replays undelivered stored events up to the durable attempt limit.
 
 ### Security Layer
 
@@ -116,7 +117,8 @@ POST /pay/:sessionId/wallet
   → STEP 3: Request interactive outgoing payment grant
       → Generate nonce for hash verification
       → Request grant from customer's auth server with interact.finish
-  → Store all references (incoming payment URL, quote ID, grant tokens) in session
+  → Store each external reference as it is created
+  → Move the session to awaiting_approval
   → Return interact redirect URL to frontend
 ```
 
@@ -132,7 +134,8 @@ GET /pay/:sessionId/grant/callback?interact_ref=xxx&hash=xxx
   → Continue the grant with the interact_ref
   → Obtain the finalized access token
   → Create outgoing payment with quote ID
-  → Mark session as completed
+  → Atomically claim awaiting_approval → processing
+  → Mark session as completed and purge grant continuation secrets
   → Fire webhook (background, non-blocking)
   → Redirect to OpenCheckout success page
 ```
@@ -144,26 +147,19 @@ The OpenCheckout success page displays a confirmation with a countdown, then for
 ## State Machine
 
 ```
-┌──────┐     completed    ┌───────────┐
-│ open │ ────────────────► │ completed │ (terminal)
-└──────┘                   └───────────┘
-   │
-   │  expired              ┌───────────┐
-   ├──────────────────────► │ expired   │ (terminal)
-   │                        └───────────┘
-   │
-   │  canceled             ┌───────────┐
-   └──────────────────────► │ canceled  │ (terminal)
-                            └───────────┘
+open → preparing → awaiting_approval → processing → completed
+  │        │                 │
+  ├────────┴─────────────────┴────────→ expired
+  └───────────────────────────────────→ canceled
 ```
 
-A session starts as `open` and can transition to exactly one terminal state. Once terminal, no further transitions are allowed. Transitions are validated at the application level and enforced by the state machine module.
+A preparation failure can safely return `preparing` to `open`. Once a session reaches a terminal state (`completed`, `expired`, or `canceled`), no further transitions are allowed.
 
 ## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) with TypeScript |
+| Framework | Next.js 16 (App Router) with TypeScript |
 | Database | SQLite via better-sqlite3 with Drizzle ORM |
 | Payments | `@interledger/open-payments` SDK |
 | UI | React 19 with Tailwind CSS, Lucide icons |

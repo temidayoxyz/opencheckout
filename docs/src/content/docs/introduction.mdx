@@ -1,9 +1,9 @@
 ---
 title: Introduction
-description: What OpenCheckout is, how it works, and why you'd use it instead of Stripe or PayPal.
+description: What OpenCheckout is, how it works, and why you'd use it instead of platform-hosted processors.
 ---
 
-OpenCheckout is an open-source, self-hosted checkout system for accepting payments on the web. It provides a hosted checkout page and a Stripe-compatible API that you deploy on your own infrastructure. Your customers pay using their [Open Payments](https://openpayments.dev) wallet address — a URL-based identifier for their bank account, digital wallet, or mobile money account.
+OpenCheckout is an open-source, self-hosted checkout system for accepting payments on the web. It provides a hosted checkout page and a Checkout Sessions REST API that you deploy on your own infrastructure. Your customers pay using their [Open Payments](https://openpayments.dev) wallet address — a URL-based identifier for their bank account, digital wallet, or mobile money account.
 
 Under the hood, OpenCheckout orchestrates the full Open Payments protocol flow:
 
@@ -12,30 +12,30 @@ Under the hood, OpenCheckout orchestrates the full Open Payments protocol flow:
 3. Facilitates an **interactive grant** where the customer approves the payment at their own financial institution
 4. Issues an **outgoing payment** instruction to move the money
 
-OpenCheckout does not touch funds or execute payments — it separates payment instructions from payment execution. This means you can include payment functionality in your application without registering as a licensed money transmitter.
+OpenCheckout does not hold funds or execute settlement — it separates payment instructions from payment execution. Regulatory obligations still depend on your jurisdiction and business model, so production operators should obtain their own legal guidance.
 
 ## Why OpenCheckout
 
-| Aspect | OpenCheckout | Stripe / PayPal / Paystack |
+| Aspect | OpenCheckout | Platform-hosted processors |
 |---|---|---|
 | Deployment | Self-hosted on your server | Platform-hosted on their servers |
 | Data ownership | You own all payment data | They own your payment data |
-| Per-transaction fees | None | 2.9% + $0.30 typical |
+| Software transaction fee | None from OpenCheckout; providers may charge fees | Provider-specific |
 | License | Open-source (AGPLv3) | Proprietary |
 | Payment method | Any Open Payments wallet | Cards, bank transfers, their wallet |
 | Wallet compatibility | Works with any compliant ASE | Locked to their ecosystem |
-| API compatibility | Stripe-compatible sessions API | Stripe's own API |
+| API model | Checkout Sessions REST API | Provider-specific APIs |
 
 ## Key Features
 
-- **Stripe-compatible checkout sessions API** — same endpoint shape, response format, and idempotency behavior
+- **Checkout Sessions REST API** — create checkout sessions, track payment progress, and return customers to your store when payment is complete
 - **Wallet-agnostic** — any bank, digital wallet, or mobile money provider implementing Open Payments
 - **Cross-currency payments** — customers pay in their currency; you receive in yours
 - **Interactive payment consent** — customers approve payments at their own financial institution via GNAP
 - **Merchant dashboard** — transaction history, API key management, webhook configuration
 - **Webhook delivery** — HMAC-SHA256 signed events with automatic retries
 - **Cryptographic security** — Ed25519 request signing, AES-256-GCM encryption at rest
-- **Single-command deployment** — `docker compose up` with SQLite included
+- **Simple deployment** — Docker Compose with SQLite schema bootstrap included
 
 ## How It Works
 
@@ -112,7 +112,7 @@ OpenCheckout acts as a client that orchestrates calls across all three servers. 
 
 ## Who This Is For
 
-- **Developers and startups** who want to accept payments without per-transaction fees
+- **Developers and startups** who want checkout software without an additional OpenCheckout transaction fee
 - **Merchants** who want full control over their payment data and checkout experience
 - **Marketplace platforms** that need to orchestrate payments between multiple parties
 - **Non-profits and open-source projects** that want a payment solution aligned with their values

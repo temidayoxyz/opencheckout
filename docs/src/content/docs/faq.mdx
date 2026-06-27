@@ -7,15 +7,15 @@ description: Frequently asked questions about OpenCheckout.
 
 ### What is OpenCheckout?
 
-OpenCheckout is an open-source, self-hosted checkout system. It provides a hosted payment page and a Stripe-compatible API that you run on your own server. Customers pay using their Open Payments wallet address instead of entering credit card details.
+OpenCheckout is an open-source, self-hosted checkout system. It provides a hosted payment page and a Checkout Sessions REST API that you run on your own server. Customers pay using their Open Payments wallet address instead of entering credit card details.
 
-### How is this different from Stripe or PayPal?
+### How is this different from platform-hosted payment processors?
 
-Stripe and PayPal are platform-hosted payment processors. They charge a percentage of every transaction (typically 2.9% + $0.30), own your payment data, and require customers to use card-based payment methods. OpenCheckout is self-hosted software — you deploy it on your infrastructure, you own your data, and there are no per-transaction fees. Payments flow through the Open Payments protocol instead of through a proprietary processor.
+Platform-hosted processors usually charge a percentage of every transaction, control the hosted payment data, and limit payment methods to their ecosystem. OpenCheckout runs on your infrastructure and does not add its own transaction fee. Account providers may still charge fees or apply exchange rates.
 
 ### Does OpenCheckout move money?
 
-No. OpenCheckout issues payment instructions via the Open Payments protocol. The actual movement of funds between the customer's account and the merchant's account is handled by the account servicing entities (banks, wallet providers) over their settlement rails. OpenCheckout does not touch funds, hold balances, or require a money transmitter license.
+No. OpenCheckout issues payment instructions via the Open Payments protocol. The actual movement of funds is handled by account providers over their settlement rails. OpenCheckout does not hold balances, but regulatory obligations still depend on your jurisdiction and business model.
 
 ### What is a wallet address?
 
@@ -59,13 +59,13 @@ Your merchant private keys are encrypted with the `ENCRYPTION_KEY` using AES-256
 
 ### Can I run multiple merchants on one instance?
 
-Currently, OpenCheckout supports one merchant per instance. The setup wizard creates a single merchant record. Multi-merchant support is planned for a future release.
+The data and API-key model are merchant-scoped, and the setup wizard can create more than one merchant. There is not yet an instance-wide merchant administration UI, so one merchant per deployment remains the simplest operational model.
 
 ## API and Integration
 
-### Is the API really Stripe-compatible?
+### Is the API a REST API?
 
-The checkout sessions API (`POST /api/checkout/sessions`) follows the Stripe Checkout Sessions API shape — same endpoint structure, same field names, same response format, and same idempotency header behavior. Existing Stripe integrations can be adapted with minimal changes. The full list of differences is documented in the [API Reference](/api-reference).
+Yes. The checkout sessions API (`POST /api/checkout/sessions`) creates one-time `payment` sessions, supports safe retries, stores order details, redirects customers after payment, exposes session retrieval, and sends webhooks.
 
 ### How does idempotency work?
 
@@ -73,11 +73,11 @@ Pass an `Idempotency-Key` header with a unique value for each checkout session c
 
 ### Can I customize the checkout page appearance?
 
-The checkout page uses your merchant name and displays your line items. Custom branding (logo, colors) is available through the merchant settings. The "Secured by OpenCheckout" badge is always displayed as a trust signal.
+The checkout page currently uses your merchant name and line items with the OpenCheckout design system. Per-merchant logo and color controls are not yet exposed in the dashboard.
 
 ### How do I handle a payment where the customer closed their browser during approval?
 
-If a customer closes their browser after being redirected to their authorization server but before the redirect back completes, the session remains in `open` status with a pending grant. When the customer revisits the checkout page, they will see a **Check Payment Status** button. If they already approved the payment at their provider, clicking this button recovers the session.
+If a customer closes their browser before approval, the session remains `awaiting_approval` and the checkout page offers **Continue approval**. If completion was interrupted after approval, **Check Payment Status** reconciles a confirmed incoming payment without asking the customer to submit a second payment.
 
 ### What webhook events are sent?
 
@@ -85,7 +85,7 @@ Currently, `checkout.session.completed` is sent when a payment completes success
 
 ### What happens if a webhook delivery fails?
 
-Webhooks are retried up to 3 times with exponential backoff (1 second, 2 seconds, 4 seconds). If all attempts fail, the event is recorded in the database. The delivery status is visible in the webhook events log.
+Webhooks are retried up to 3 times immediately with exponential backoff. Delivery attempts are recorded in the database, and the scheduled maintenance job replays undelivered events up to the durable attempt limit. A dashboard delivery-log screen is not currently included, so operators should monitor logs and the `webhook_events` table.
 
 ## Protocol and Standards
 
@@ -113,7 +113,7 @@ OpenCheckout runs on any Linux server with Node.js 22+ and 512MB RAM. The SQLite
 
 ### Can I deploy to a serverless platform?
 
-No. OpenCheckout is designed as a long-running server with a persistent SQLite database. Serverless platforms do not support the persistent filesystem required for SQLite.
+The default deployment requires a long-running process and persistent SQLite storage. A serverless deployment would require replacing the storage and background-delivery assumptions and is not supported by the provided configuration.
 
 ### How do I set up HTTPS?
 

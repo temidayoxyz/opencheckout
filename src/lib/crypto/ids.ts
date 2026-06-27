@@ -6,7 +6,7 @@ const alphabet =
 const nanoid = customAlphabet(alphabet, 16);
 
 /**
- * Generate a Stripe-style checkout session ID (e.g., cs_a1b2c3d4e5f6g7h8)
+ * Generate an OpenCheckout session ID (e.g., cs_a1b2c3d4e5f6g7h8)
  */
 export function generateSessionId(): string {
   return `cs_${nanoid()}`;

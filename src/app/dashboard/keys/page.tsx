@@ -1,13 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Trash2, Copy, Check } from "lucide-react";
-
-function getApiKey(): string | null {
-  const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((c) => c.startsWith("oc_api_key="));
-  return authCookie ? authCookie.split("=")[1] : null;
-}
 
 interface ApiKeyRecord {
   id: string;
@@ -17,34 +12,32 @@ interface ApiKeyRecord {
 }
 
 export default function KeysPage() {
-  const [apiKey, setApiKey] = useState("");
+  const router = useRouter();
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newKey, setNewKey] = useState<{ name: string; plaintext: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    const key = getApiKey();
-    if (key) setApiKey(key);
-  }, []);
-
-  useEffect(() => {
-    if (!apiKey) return;
-    loadKeys();
-  }, [apiKey]);
-
-  async function loadKeys() {
+  const loadKeys = useCallback(async () => {
     try {
-      const res = await fetch("/api/dashboard/keys", {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
-      if (res.ok) setKeys((await res.json()).keys);
+      const res = await fetch("/api/dashboard/keys", { cache: "no-store" });
+      if (res.status === 401) {
+        router.replace("/dashboard");
+        return;
+      }
+      if (!res.ok) throw new Error("Failed to load keys");
+      setKeys((await res.json()).keys);
     } catch {
       setError("Failed to load keys");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }
+  }, [router]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadKeys);
+  }, [loadKeys]);
 
   async function createKey(e: React.FormEvent) {
     e.preventDefault();
@@ -55,14 +48,13 @@ export default function KeysPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ name }),
       });
       if (res.ok) {
         const data = await res.json();
         setNewKey(data);
-        loadKeys();
+        await loadKeys();
         (document.getElementById("key-name") as HTMLInputElement).value = "";
       } else {
         setError((await res.json()).error?.message ?? "Failed to create key");
@@ -74,11 +66,15 @@ export default function KeysPage() {
 
   async function revokeKey(keyId: string) {
     if (!confirm("Revoke this key? It will stop working immediately.")) return;
-    await fetch(`/api/dashboard/keys?id=${keyId}`, {
+    const response = await fetch(`/api/dashboard/keys?id=${keyId}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${apiKey}` },
     });
-    loadKeys();
+    if (!response.ok) {
+      const data = await response.json();
+      setError(data.error?.message ?? "Failed to revoke key");
+      return;
+    }
+    await loadKeys();
   }
 
   const copyToClipboard = async (text: string) => {
@@ -154,6 +150,7 @@ export default function KeysPage() {
       </div>
 
       <div className="card-hairline overflow-hidden">
+        <div className="table-scroll">
         <table className="w-full text-base">
           <thead>
             <tr className="border-b border-hairline text-left">
@@ -216,6 +213,7 @@ export default function KeysPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

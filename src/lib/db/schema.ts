@@ -1,4 +1,10 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 export const merchants = sqliteTable("merchants", {
@@ -22,27 +28,42 @@ export const merchants = sqliteTable("merchants", {
     .default(sql`(datetime('now'))`),
 });
 
-export const apiKeys = sqliteTable("api_keys", {
-  id: text("id").primaryKey(),
-  merchantId: text("merchant_id")
-    .notNull()
-    .references(() => merchants.id),
-  keyHash: text("key_hash").notNull(), // SHA-256 hash
-  name: text("name").notNull(),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-  revokedAt: text("revoked_at"), // NULL = active
-});
+export const apiKeys = sqliteTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    keyHash: text("key_hash").notNull(), // SHA-256 hash
+    name: text("name").notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    revokedAt: text("revoked_at"), // NULL = active
+  },
+  (table) => [
+    uniqueIndex("api_keys_key_hash_unique").on(table.keyHash),
+    index("api_keys_merchant_id_idx").on(table.merchantId),
+  ]
+);
 
 export const checkoutSessions = sqliteTable("checkout_sessions", {
   id: text("id").primaryKey(), // cs_xxx
   merchantId: text("merchant_id")
     .notNull()
     .references(() => merchants.id),
-  mode: text("mode", { enum: ["payment", "subscription", "donation"] }).notNull(),
+  mode: text("mode", { enum: ["payment"] }).notNull(),
   status: text("status", {
-    enum: ["open", "completed", "expired", "canceled"],
+    enum: [
+      "open",
+      "preparing",
+      "awaiting_approval",
+      "processing",
+      "completed",
+      "expired",
+      "canceled",
+    ],
   })
     .notNull()
     .default("open"),
@@ -72,27 +93,48 @@ export const checkoutSessions = sqliteTable("checkout_sessions", {
   continueAccessToken: text("continue_access_token"),
   continueUri: text("continue_uri"),
   interactRef: text("interact_ref"),
+  grantClientNonce: text("grant_client_nonce"),
+  grantServerNonce: text("grant_server_nonce"),
+  grantAuthServerUrl: text("grant_auth_server_url"),
+  grantInteractUrl: text("grant_interact_url"),
   // Lifecycle
   customerWallet: text("customer_wallet"),
+  preparationStartedAt: text("preparation_started_at"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),
   expiresAt: text("expires_at").notNull(),
   completedAt: text("completed_at"),
-});
+}, (table) => [
+  index("checkout_sessions_merchant_created_idx").on(
+    table.merchantId,
+    table.createdAt
+  ),
+  index("checkout_sessions_status_expires_idx").on(table.status, table.expiresAt),
+]);
 
-export const idempotencyKeys = sqliteTable("idempotency_keys", {
-  keyHash: text("key_hash").primaryKey(), // SHA-256 of Idempotency-Key
-  merchantId: text("merchant_id")
-    .notNull()
-    .references(() => merchants.id),
-  sessionId: text("session_id").notNull(),
-  response: text("response", { mode: "json" }).$type<Record<string, unknown>>(),
-  statusCode: integer("status_code").notNull(),
-  createdAt: text("created_at")
-    .notNull()
-    .default(sql`(datetime('now'))`),
-});
+export const idempotencyKeys = sqliteTable(
+  "idempotency_keys",
+  {
+    keyHash: text("key_hash").primaryKey(), // SHA-256 of merchant + Idempotency-Key
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    requestHash: text("request_hash").notNull(),
+    sessionId: text("session_id"),
+    response: text("response", { mode: "json" }).$type<Record<string, unknown>>(),
+    statusCode: integer("status_code"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idempotency_keys_merchant_created_idx").on(
+      table.merchantId,
+      table.createdAt
+    ),
+  ]
+);
 
 export const webhookEvents = sqliteTable("webhook_events", {
   id: text("id").primaryKey(),

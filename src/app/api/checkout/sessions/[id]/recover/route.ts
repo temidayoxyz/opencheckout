@@ -1,32 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getCheckoutSession,
+  saveSessionOpReferences,
   updateSessionStatus,
 } from "@/lib/checkout/sessions";
 import { SESSION_STATUS } from "@/lib/checkout/state-machine";
+import { assertSafePublicUrl } from "@/lib/crypto/url-validation";
+import { fireSessionWebhook } from "@/lib/webhook/deliver";
+import { checkRateLimit, getRequestClientKey } from "@/lib/http/rate-limit";
 
 /**
  * POST /api/checkout/sessions/:id/recover
  *
- * Attempts to recover a stuck session where the customer approved
- * the payment but the ASE redirect never arrived.
- *
- * Checks the incoming payment status via the public Open Payments endpoint.
- * No authentication required — this is a customer-facing recovery flow.
+ * Resumes approval when possible and reconciles a payment whose provider
+ * completed successfully after the browser callback was interrupted.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: sessionId } = await params;
-
+  const rateLimit = checkRateLimit(
+    `recover:${sessionId}:${getRequestClientKey(request)}`,
+    { limit: 20, windowMs: 10 * 60 * 1000 }
+  );
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: { message: "Too many status checks. Try again later." } },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      }
+    );
+  }
   const session = await getCheckoutSession(sessionId);
-  if (!session) {
-    return NextResponse.json(
-      { error: { message: "Session not found" } },
-      { status: 404 }
-    );
-  }
+
   if (!session) {
     return NextResponse.json(
       { error: { message: "Session not found" } },
@@ -34,68 +42,115 @@ export async function POST(
     );
   }
 
-  // Only recoverable if still open with grant references
-  if (session.status !== SESSION_STATUS.OPEN) {
-    return NextResponse.json(
-      { recovered: false, message: `Session is already ${session.status}` },
-      { status: 200 }
-    );
+  if (
+    session.status === SESSION_STATUS.COMPLETED ||
+    session.status === SESSION_STATUS.EXPIRED ||
+    session.status === SESSION_STATUS.CANCELED
+  ) {
+    return NextResponse.json({
+      recovered: false,
+      message: `Session is already ${session.status}`,
+    });
   }
 
-  if (!session.continueAccessToken || !session.continueUri || !session.customerWallet) {
-    return NextResponse.json(
-      { recovered: false, message: "No pending grant to recover" },
-      { status: 200 }
-    );
+  if (session.status === SESSION_STATUS.PREPARING) {
+    return NextResponse.json({
+      recovered: false,
+      message: "Payment preparation is still in progress. Please wait a moment.",
+    });
+  }
+
+  if (
+    session.status === SESSION_STATUS.AWAITING_APPROVAL &&
+    session.grantInteractUrl
+  ) {
+    return NextResponse.json({
+      recovered: true,
+      action: "resume_approval",
+      message: "Your payment is ready for approval.",
+      interact_url: session.grantInteractUrl,
+    });
+  }
+
+  if (session.status === SESSION_STATUS.PROCESSING) {
+    return reconcileProcessingSession(session);
+  }
+
+  return NextResponse.json({
+    recovered: false,
+    message: "No pending payment approval was found. You can try again.",
+  });
+}
+
+async function reconcileProcessingSession(
+  session: NonNullable<Awaited<ReturnType<typeof getCheckoutSession>>>
+) {
+  if (!session.incomingPaymentUrl || session.amountTotal === null) {
+    return NextResponse.json({
+      recovered: false,
+      message:
+        "Payment completion is still being reconciled. Do not submit another payment.",
+    });
   }
 
   try {
-    // Check if the incoming payment has received funds
-    if (session.incomingPaymentUrl) {
-      const response = await fetch(session.incomingPaymentUrl, {
-        headers: { Accept: "application/json" },
-      });
+    await assertSafePublicUrl(session.incomingPaymentUrl);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const response = await fetch(session.incomingPaymentUrl, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(timeout);
 
-      if (response.ok) {
-        const incomingPayment = await response.json();
-
-        // If funds were received, complete the flow
-        if (
-          incomingPayment.receivedAmount &&
-          parseFloat(incomingPayment.receivedAmount.value) > 0
-        ) {
-          // We have an incoming payment — but without the interact_ref from the ASE
-          // we can't continue the grant. The ASE callback is required for the interact_ref.
-          //
-          // Recovery path: mark the incoming payment as complete so the merchant
-          // can reconcile manually. The funds are in the merchant's account.
-          return NextResponse.json({
-            recovered: true,
-            action: "incoming_payment_received",
-            message:
-              "Payment received but grant continuation is pending. The funds are safe in your account.",
-            incomingPayment,
-          });
-        }
-      }
-    }
-
-    // Check if the grant has expired
-    if (session.expiresAt && new Date(session.expiresAt) < new Date()) {
-      await updateSessionStatus(sessionId, SESSION_STATUS.EXPIRED);
+    if (!response.ok) {
       return NextResponse.json({
-        recovered: true,
-        action: "expired",
-        message: "Session has expired.",
+        recovered: false,
+        message: "The payment provider has not confirmed completion yet.",
       });
     }
+
+    const incomingPayment = (await response.json()) as {
+      receivedAmount?: { value?: string };
+    };
+    const receivedValue = incomingPayment.receivedAmount?.value;
+    if (!receivedValue || BigInt(receivedValue) < BigInt(session.amountTotal)) {
+      return NextResponse.json({
+        recovered: false,
+        message: "The payment provider has not confirmed the full amount yet.",
+      });
+    }
+
+    await saveSessionOpReferences(session.id, {
+      continueAccessToken: null,
+      continueUri: null,
+      grantInteractUrl: null,
+    });
+    await updateSessionStatus(session.id, SESSION_STATUS.COMPLETED);
+    await fireSessionWebhook(
+      session.merchantId,
+      session.id,
+      "checkout.session.completed",
+      {
+        id: session.id,
+        status: "completed",
+        amount_total: session.amountTotal,
+        currency: session.currency,
+        metadata: session.metadata,
+        outgoing_payment: session.outgoingPaymentUrl,
+        customer_wallet: session.customerWallet,
+        reconciled: true,
+      }
+    );
 
     return NextResponse.json({
-      recovered: false,
-      message: "Session is still pending. The customer may not have approved yet.",
+      recovered: true,
+      action: "completed",
+      message: "Payment was received and the checkout has been reconciled.",
     });
-  } catch (err) {
-    console.error("Recovery check failed:", err);
+  } catch (error) {
+    console.error("Recovery check failed:", error);
     return NextResponse.json(
       { error: { message: "Recovery check failed" } },
       { status: 500 }

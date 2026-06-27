@@ -9,7 +9,7 @@ The OpenCheckout dashboard is the merchant-facing interface for managing your ch
 
 The dashboard requires authentication with an API key. When you first visit `/dashboard`, you will see a sign-in form.
 
-Enter your API key (the `sk_...` value from the setup wizard or from your key management page) and click **Sign In**. The key is stored in a browser cookie for the current session and is sent as a Bearer token with every dashboard API request.
+Enter your API key (the `sk_...` value from the setup wizard or from your key management page) and click **Sign In**. The server validates it and sets an eight-hour, encrypted `HttpOnly`, `Secure`, `SameSite=Strict` dashboard session cookie. Client-side JavaScript cannot read the credential.
 
 To sign out, click **Log out** in the top navigation bar.
 
@@ -32,9 +32,12 @@ The Transactions page (`/dashboard`) is the default view after signing in. It li
 | Status | Meaning |
 |---|---|
 | **open** | The session is active and can be used for payment. The customer can still visit the checkout page. |
+| **preparing** | OpenCheckout is preparing the incoming payment, quote, and approval grant. |
+| **awaiting approval** | The payment is ready to resume at the customer's wallet provider. |
+| **processing** | Approval succeeded and final completion is being confirmed. A second payment must not be submitted. |
 | **completed** | The payment was successfully processed. An outgoing payment was created and the customer was redirected to the success URL. |
 | **expired** | The session passed its expiration time (default 24 hours) without being completed. |
-| **canceled** | The session was manually expired via the API or dashboard. |
+| **canceled** | The merchant canceled the session through the API. Explicit expiry uses `expired`. |
 
 ## API Keys
 
@@ -95,6 +98,6 @@ The top navigation bar uses pill-shaped tabs:
 - **API Keys** — key management
 - **Settings** — webhook configuration
 
-The active tab is highlighted with a black background. The **Log out** button on the right ends your dashboard session by clearing the API key cookie.
+The active tab is highlighted with a black background. The **Log out** button on the right ends your dashboard session by clearing the encrypted session cookie.
 
 The navigation bar is sticky and remains visible as you scroll through transaction history.

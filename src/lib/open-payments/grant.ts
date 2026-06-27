@@ -91,9 +91,10 @@ export async function requestOutgoingPaymentGrant(
     );
   }
 
-  // Extract server nonce from the interact response if available
-  const serverNonce =
-    (grant.interact as Record<string, unknown>)?.nonce as string | null;
+  // The authorization server returns its interaction nonce as
+  // `interact.finish`. This value must be stored and used when verifying the
+  // hash on the redirect callback.
+  const serverNonce = grant.interact.finish;
 
   return {
     pendingGrant: grant,

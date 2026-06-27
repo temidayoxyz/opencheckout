@@ -36,12 +36,19 @@ cd opencheckout
 # Generate a secure encryption key
 echo "ENCRYPTION_KEY=$(openssl rand -hex 32)" > .env
 echo "BASE_URL=https://pay.yourstore.com" >> .env
+echo "MAINTENANCE_SECRET=$(openssl rand -hex 32)" >> .env
 
-# Run the setup wizard to create your merchant account
-npm run setup
+# Build without sending local env files or private keys into the image
+docker compose build
 
-# Start with Docker
-docker compose up -d
+# Create the merchant inside the same Docker volume used by the service.
+# At the private-key prompt, enter /run/secrets/merchant-private.pem
+docker compose --profile setup run --rm \
+  -v "/absolute/path/private.pem:/run/secrets/merchant-private.pem:ro" \
+  setup
+
+# Start the application
+docker compose up -d opencheckout
 ```
 
 OpenCheckout is now running on port `3080` inside the container, mapped to `3080` on the host.
@@ -118,6 +125,14 @@ The response includes `url` — redirect your customer there. That is the entire
 | `ENCRYPTION_KEY` | Yes | 64-character hex string. Encrypts private keys in the database. Generate with `openssl rand -hex 32`. Store securely. |
 | `BASE_URL` | Yes | Full public URL of your OpenCheckout instance, including `https://`. Used for ASE redirect callbacks. Must match your domain. |
 | `DATABASE_URL` | No | Path to the SQLite database file. Defaults to `data/opencheckout.db`. |
+| `CORS_ALLOWED_ORIGINS` | No | Comma-separated browser origins allowed to call `/api/checkout`. Leave empty for server-to-server access only. |
+| `MAINTENANCE_SECRET` | Recommended | Enables authenticated session expiry, idempotency cleanup, and durable webhook replay. |
+
+Run maintenance on a schedule, for example every five minutes:
+
+```text
+*/5 * * * * cd /srv/opencheckout && docker compose exec -T opencheckout node scripts/maintenance.mjs
+```
 
 ## Docker Compose Configuration
 
@@ -142,6 +157,8 @@ volumes:
 
 The named volume `opencheckout_data` persists the database across container restarts and upgrades.
 
+The `setup` profile uses that same volume. Do not run `npm run setup` on the host and then start the default named-volume deployment: the host database is a different file and the container would not contain that merchant.
+
 ## Database
 
 OpenCheckout uses **SQLite** by default. The database is a single file — no separate database server, no connection strings, no network configuration. This is intentional: self-hosted software should be simple to operate.
@@ -149,20 +166,20 @@ OpenCheckout uses **SQLite** by default. The database is a single file — no se
 ### Backups
 
 ```bash
-# Direct file copy
-cp data/opencheckout.db "data/backup-$(date +%Y%m%d).db"
-
-# From Docker
-docker compose exec opencheckout cp data/opencheckout.db data/backup.db
+# Stop writes, copy the database from the named volume, then restart.
+docker compose stop opencheckout
+docker run --rm \
+  -v opencheckout_opencheckout_data:/data \
+  -v "$PWD/backups:/backup" \
+  alpine cp /data/opencheckout.db /backup/opencheckout-$(date +%Y%m%d).db
+docker compose start opencheckout
 ```
 
 For continuous backup, [Litestream](https://litestream.io) replicates the SQLite WAL to S3-compatible storage in real time.
 
 ### Database Portability
 
-OpenCheckout uses [Drizzle ORM](https://orm.drizzle.team) for database access. The schema is defined in `src/lib/db/schema.ts` and is portable across Drizzle's supported dialects. SQLite is the default and recommended choice for self-hosted deployments. PostgreSQL and MySQL are supported by Drizzle but not yet configured in OpenCheckout — if you need horizontal scaling or multi-server deployments, the migration path exists and requires swapping the connection adapter.
-
-If you outgrow SQLite, migrating to PostgreSQL is straightforward because the schema definitions are dialect-agnostic.
+OpenCheckout uses [Drizzle ORM](https://orm.drizzle.team), but the current schema and connection code are SQLite-specific. PostgreSQL or MySQL would require a deliberate schema migration, a new adapter, concurrency testing, and an operational rollout; it is not a configuration-only switch.
 
 ## Framework and Language Compatibility
 
@@ -201,4 +218,4 @@ npm run build
 npm start
 ```
 
-Database migrations are applied automatically when the Open Payments SDK is updated. For schema changes to the OpenCheckout tables, run the Drizzle migration commands included in the release notes.
+The container and `npm start` run the schema bootstrapper before serving traffic. This is not a substitute for release-specific migrations: read the release notes, back up the database, and run the full health and checkout smoke tests after rebuilding.

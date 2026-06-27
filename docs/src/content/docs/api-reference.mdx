@@ -3,7 +3,7 @@ title: API Reference
 description: Complete reference for the OpenCheckout API.
 ---
 
-OpenCheckout provides a [Stripe-compatible Checkout Sessions API](https://docs.stripe.com/api/checkout/sessions).
+OpenCheckout provides a Checkout Sessions REST API for one-time Open Payments checkouts.
 
 ## Authentication
 
@@ -60,12 +60,12 @@ Create a new checkout session.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `mode` | string | Yes | `payment`, `subscription`, or `donation` |
+| `mode` | string | Yes | `payment` |
 | `line_items` | array | Yes | 1–100 items |
-| `line_items[].price_data.currency` | string | Yes | ISO 4217 (3 letters, lowercase) |
+| `line_items[].price_data.currency` | string | Yes | Three-letter asset code; normalized to lowercase |
 | `line_items[].price_data.product_data.name` | string | Yes | Product name (1–200 chars) |
 | `line_items[].price_data.product_data.description` | string | No | Product description |
-| `line_items[].price_data.unit_amount` | integer | Yes | Price in smallest currency unit (cents) |
+| `line_items[].price_data.unit_amount` | integer | Yes | Price in the currency's smallest unit |
 | `line_items[].quantity` | integer | No | Default: 1 |
 | `success_url` | string | Yes | Redirect URL on success |
 | `cancel_url` | string | Yes | Redirect URL on cancel |
@@ -79,15 +79,29 @@ Use `{CHECKOUT_SESSION_ID}` in URLs — it's replaced with the actual session ID
 ```json
 {
   "id": "cs_abc123xyz",
+  "object": "checkout.session",
   "status": "open",
   "url": "https://checkout.yourdomain.com/pay/cs_abc123xyz",
   "amount_total": 2000,
   "currency": "usd",
   "mode": "payment",
+  "line_items": [{
+    "price_data": {
+      "currency": "usd",
+      "product_data": { "name": "Product name", "description": "Optional description" },
+      "unit_amount": 2000
+    },
+    "quantity": 1
+  }],
+  "metadata": {},
   "success_url": "https://example.com/success?session_id=cs_abc123xyz",
   "cancel_url": "https://example.com/cancel",
+  "customer_wallet": null,
+  "incoming_payment": null,
+  "outgoing_payment": null,
   "expires_at": "2026-06-16T00:00:00Z",
-  "created_at": "2026-06-15T00:00:00Z"
+  "created_at": "2026-06-15T00:00:00Z",
+  "completed_at": null
 }
 ```
 
@@ -95,7 +109,7 @@ Use `{CHECKOUT_SESSION_ID}` in URLs — it's replaced with the actual session ID
 
 Retrieve a checkout session.
 
-**Response:** The full session object with `status`, payment references, and metadata.
+**Response:** The public snake_case session object. Grant tokens, continuation URIs, merchant IDs, nonces, and authorization-server details are never returned.
 
 ### GET /api/checkout/sessions
 
@@ -106,9 +120,27 @@ List sessions (paginated).
 | `limit` | integer | 10 | Max 100 |
 | `cursor` | string | - | Pagination cursor |
 
+The list response includes `has_more` and `next_cursor`. Pass `next_cursor` as the next request's `cursor`.
+
 ### POST /api/checkout/sessions/:id/expire
 
-Expire an open session.
+Expire an `open` or `awaiting_approval` session.
+
+### POST /api/checkout/sessions/:id/cancel
+
+Cancel an `open` or `awaiting_approval` session.
+
+## Session statuses
+
+| Status | Meaning |
+|---|---|
+| `open` | Ready for a wallet submission |
+| `preparing` | Incoming payment, quote, and grant are being prepared |
+| `awaiting_approval` | Customer approval can be resumed at the wallet provider |
+| `processing` | Approval succeeded and payment completion is being reconciled |
+| `completed` | Payment instruction completed |
+| `expired` | Session passed its expiry or was explicitly expired |
+| `canceled` | Session was canceled |
 
 ## Webhooks
 

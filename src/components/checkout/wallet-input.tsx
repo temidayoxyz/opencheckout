@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
+import { getCurrencyScale } from "@/lib/checkout/currency";
 
 interface WalletInputProps {
   sessionId: string;
@@ -12,12 +13,13 @@ interface WalletInputProps {
 }
 
 function formatAmount(amount: number, currency: string): string {
+  const scale = getCurrencyScale(currency);
   const formatter = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),
-    minimumFractionDigits: 2,
+    minimumFractionDigits: scale,
   });
-  return formatter.format(amount / 100);
+  return formatter.format(amount / Math.pow(10, scale));
 }
 
 export function WalletInput({
@@ -70,6 +72,7 @@ export function WalletInput({
         }
 
         const { interactUrl } = await res.json();
+        onSubmit(trimmed);
         window.location.href = interactUrl;
       } catch {
         setError("Something went wrong. Please try again.");
@@ -96,7 +99,7 @@ export function WalletInput({
         }}
         placeholder="Enter your wallet address URL"
         disabled={disabled || loading}
-        className="block w-full rounded-lg border border-hairline bg-canvas px-4 py-3 text-lg font-[320] text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+        className="block w-full rounded-2xl border border-white/70 bg-white/65 px-4 py-3 text-lg font-[320] text-ink placeholder:text-ink-soft shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
         autoComplete="url"
         autoFocus
       />

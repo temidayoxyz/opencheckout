@@ -7,7 +7,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "OpenCheckout",
-      description: "Open-source, self-hosted checkout powered by Open Payments.",
+      description: "Checkout orchestration powered by Open Payments.",
       favicon: "/favicon.ico",
       logo: {
         light: "./src/assets/logo-light.png",

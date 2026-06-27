@@ -1,16 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Save, RefreshCw, Copy, Check } from "lucide-react";
 
-function getApiKey(): string | null {
-  const cookies = document.cookie.split("; ");
-  const authCookie = cookies.find((c) => c.startsWith("oc_api_key="));
-  return authCookie ? authCookie.split("=")[1] : null;
-}
-
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState("");
+  const router = useRouter();
   const [webhookUrl, setWebhookUrl] = useState("");
   const [secretMasked, setSecretMasked] = useState("");
   const [loading, setLoading] = useState(true);
@@ -20,22 +15,32 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const key = getApiKey();
-    if (key) setApiKey(key);
-  }, []);
-
-  useEffect(() => {
-    if (!apiKey) return;
+    const controller = new AbortController();
     fetch("/api/dashboard/settings", {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: controller.signal,
     })
-      .then((r) => r.json())
+      .then((response) => {
+        if (response.status === 401) {
+          router.replace("/dashboard");
+          return null;
+        }
+        if (!response.ok) throw new Error("Failed to load settings");
+        return response.json();
+      })
       .then((data) => {
+        if (!data) return;
         setWebhookUrl(data.webhook_url || "");
         setSecretMasked(data.webhook_secret_masked || "");
-        setLoading(false);
-      });
-  }, [apiKey]);
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setMessage("Failed to load settings.");
+      })
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, [router]);
 
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
@@ -46,7 +51,6 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ webhook_url: webhookUrl }),
       });
@@ -64,7 +68,6 @@ export default function SettingsPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({ regenerate_secret: true }),
       });

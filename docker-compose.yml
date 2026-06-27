@@ -1,14 +1,32 @@
 services:
   opencheckout:
     build: .
+    restart: unless-stopped
     ports:
       - "3080:3080"
     environment:
       - DATABASE_URL=data/opencheckout.db
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       - BASE_URL=${BASE_URL:-http://localhost:3080}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - MAINTENANCE_SECRET=${MAINTENANCE_SECRET:-}
     volumes:
       - opencheckout_data:/app/data
+
+  setup:
+    build: .
+    profiles: ["setup"]
+    environment:
+      - DATABASE_URL=data/opencheckout.db
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      - BASE_URL=${BASE_URL:-http://localhost:3080}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - MAINTENANCE_SECRET=${MAINTENANCE_SECRET:-}
+    volumes:
+      - opencheckout_data:/app/data
+    stdin_open: true
+    tty: true
+    command: ["node", "scripts/setup.mjs"]
 
 volumes:
   opencheckout_data:

@@ -1,5 +1,4 @@
 import type {
-  AuthenticatedClient,
   IncomingPayment,
   IncomingPaymentWithPaymentMethods,
 } from "@interledger/open-payments";
@@ -25,8 +24,7 @@ interface CreateIncomingPaymentParams {
  *
  * If incomingAmount is provided, it sets the maximum amount the
  * recipient expects to receive.
- * If omitted (for donations/Web Monetization), the incoming payment
- * is open-ended.
+ * If omitted by a future flow, the incoming payment is open-ended.
  */
 export async function createIncomingPayment(
   params: CreateIncomingPaymentParams

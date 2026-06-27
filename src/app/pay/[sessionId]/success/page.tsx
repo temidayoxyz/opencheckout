@@ -1,46 +1,29 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
 import { TrustFooter } from "@/components/checkout/trust-footer";
+import { getCheckoutSession } from "@/lib/checkout/sessions";
+import { SESSION_STATUS } from "@/lib/checkout/state-machine";
+import { SuccessRedirect } from "./success-redirect";
 
-function isValidRedirectUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
+export default async function SuccessPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>;
+}) {
+  const { sessionId } = await params;
+  const session = await getCheckoutSession(sessionId);
+
+  if (!session) notFound();
+
+  if (session.status !== SESSION_STATUS.COMPLETED) {
+    redirect(`/pay/${sessionId}`);
   }
-}
-
-export default function SuccessPage() {
-  const params = useParams<{ sessionId: string }>();
-  const searchParams = useSearchParams();
-  const rawUrl = searchParams.get("success_url") ?? "";
-  const successUrl = isValidRedirectUrl(rawUrl) ? rawUrl : "";
-  const [countdown, setCountdown] = useState(3);
-
-  useEffect(() => {
-    if (!successUrl) return;
-    const timer = setInterval(() => {
-      setCountdown((c) => {
-        if (c <= 1) {
-          clearInterval(timer);
-          window.location.href = successUrl;
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [successUrl]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-canvas p-4">
+    <div className="min-h-screen flex items-center justify-center bg-canvas p-4 liquid-bg">
       <div className="max-w-md w-full">
-        <div className="color-block color-block-mint text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-canvas mb-8">
+        <div className="glass-card text-center">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-white/70 border border-white/70 shadow-[0_18px_60px_rgba(17,24,39,0.12)] mb-8">
             <CheckCircle2 className="w-10 h-10 text-ink" />
           </div>
 
@@ -51,17 +34,7 @@ export default function SuccessPage() {
             Your payment has been processed successfully.
           </p>
 
-          <div className="bg-canvas rounded-lg p-4">
-            <p className="text-sm text-ink-soft font-[320]">
-              Redirecting to store in {countdown}s
-            </p>
-            <div className="w-full bg-hairline rounded-full h-1 mt-3 overflow-hidden">
-              <div
-                className="bg-primary h-1 rounded-full transition-all duration-1000"
-                style={{ width: `${((3 - countdown) / 3) * 100}%` }}
-              />
-            </div>
-          </div>
+          <SuccessRedirect successUrl={session.successUrl} />
         </div>
 
         <TrustFooter />

@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { walletSubmissionSchema } from "@/lib/checkout/validation";
 import {
+  claimSessionForPreparation,
   getCheckoutSession,
+  releaseSessionPreparation,
   saveSessionOpReferences,
+  updateSessionStatus,
 } from "@/lib/checkout/sessions";
 import { SESSION_STATUS } from "@/lib/checkout/state-machine";
 import { isValidWalletAddress } from "@/lib/open-payments/wallet-address";
@@ -10,6 +13,9 @@ import { createIncomingPayment } from "@/lib/open-payments/incoming-payment";
 import { createQuote } from "@/lib/open-payments/quote";
 import { requestOutgoingPaymentGrant } from "@/lib/open-payments/grant";
 import { generateNonce } from "@/lib/crypto/ids";
+import { toOpenPaymentsAmount } from "@/lib/checkout/currency";
+import { getAppBaseUrl } from "@/lib/http/base-url";
+import { checkRateLimit, getRequestClientKey } from "@/lib/http/rate-limit";
 
 /**
  * POST /pay/:sessionId/wallet
@@ -26,6 +32,20 @@ export async function POST(
   { params }: { params: Promise<{ sessionId: string }> }
 ) {
   const { sessionId } = await params;
+
+  const rateLimit = checkRateLimit(
+    `wallet:${sessionId}:${getRequestClientKey(request)}`,
+    { limit: 10, windowMs: 10 * 60 * 1000 }
+  );
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: { message: "Too many payment attempts. Try again later." } },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      }
+    );
+  }
 
   let body: unknown;
   try {
@@ -51,17 +71,17 @@ export async function POST(
 
   const customerWallet = parsed.data.wallet_address;
 
-  const session = await getCheckoutSession(sessionId);
-  if (!session) {
+  const existingSession = await getCheckoutSession(sessionId);
+  if (!existingSession) {
     return NextResponse.json(
       { error: { message: "Checkout session not found" } },
       { status: 404 }
     );
   }
 
-  if (session.status !== SESSION_STATUS.OPEN) {
+  if (existingSession.status !== SESSION_STATUS.OPEN) {
     return NextResponse.json(
-      { error: { message: `Checkout session is ${session.status}` } },
+      { error: { message: `Checkout session is ${existingSession.status}` } },
       { status: 400 }
     );
   }
@@ -75,15 +95,24 @@ export async function POST(
     );
   }
 
+  const session = await claimSessionForPreparation(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "This checkout is already being prepared. Refresh to continue.",
+        },
+      },
+      { status: 409 }
+    );
+  }
+
   try {
     // Look up merchant's wallet address
     const { getMerchantPrivateKey } = await import("@/lib/merchant/onboarding");
     const keys = await getMerchantPrivateKey(session.merchantId);
     if (!keys) {
-      return NextResponse.json(
-        { error: { message: "Merchant configuration not found" } },
-        { status: 500 }
-      );
+      throw new Error("Merchant configuration not found");
     }
 
     // Build a description from line items
@@ -101,19 +130,25 @@ export async function POST(
       session_id: sessionId,
       ...(session.metadata ?? {}),
     };
-    const incomingPayment = await createIncomingPayment({
-      merchantId: session.merchantId,
-      walletAddress: keys.walletAddress,
-      incomingAmount: session.amountTotal
-        ? {
-            value: session.amountTotal.toString(),
-            assetCode: session.currency.toUpperCase(),
-            assetScale: 2,
-          }
-        : undefined,
-      expiresAt: session.expiresAt ?? new Date(Date.now() + 86400000).toISOString(),
-      metadata,
-    });
+    const incomingPayment = session.incomingPaymentUrl
+      ? { id: session.incomingPaymentUrl }
+      : await createIncomingPayment({
+          merchantId: session.merchantId,
+          walletAddress: keys.walletAddress,
+          incomingAmount: session.amountTotal
+            ? toOpenPaymentsAmount(session.amountTotal, session.currency)
+            : undefined,
+          expiresAt:
+            session.expiresAt ?? new Date(Date.now() + 86400000).toISOString(),
+          metadata,
+        });
+
+    if (!session.incomingPaymentUrl) {
+      await saveSessionOpReferences(sessionId, {
+        incomingPaymentUrl: incomingPayment.id,
+        incomingPaymentId: incomingPayment.id,
+      });
+    }
 
     // Step 2: Create a quote on the customer's ASE
     const quote = await createQuote({
@@ -123,9 +158,14 @@ export async function POST(
       walletAddress: customerWallet,
     });
 
+    await saveSessionOpReferences(sessionId, {
+      quoteId: quote.id,
+      quoteUrl: quote.id,
+    });
+
     // Step 3: Request interactive outgoing payment grant
     const nonce = generateNonce();
-    const baseUrl = process.env.BASE_URL ?? request.nextUrl.origin;
+    const baseUrl = getAppBaseUrl(request);
     const finishRedirectUri = `${baseUrl}/pay/${sessionId}/grant/callback`;
 
     const grantResult = await requestOutgoingPaymentGrant({
@@ -151,29 +191,23 @@ export async function POST(
       quoteUrl: quote.id,
       continueAccessToken: pendingGrant.continue.access_token.value,
       continueUri: pendingGrant.continue.uri,
+      grantClientNonce: grantResult.clientNonce,
+      grantServerNonce: grantResult.serverNonce ?? "",
+      grantAuthServerUrl: grantResult.authServerUrl,
+      grantInteractUrl: pendingGrant.interact.redirect,
       customerWallet,
     });
 
-    // Store hash verification data alongside existing session metadata
-    const { getDb } = await import("@/lib/db");
-    const { checkoutSessions } = await import("@/lib/db/schema");
-    const { eq } = await import("drizzle-orm");
-    const mergedMeta = {
-      ...(session.metadata ?? {}),
-      _oc_client_nonce: grantResult.clientNonce,
-      _oc_server_nonce: grantResult.serverNonce ?? "",
-      _oc_auth_server_url: grantResult.authServerUrl,
-    };
-    await getDb()
-      .update(checkoutSessions)
-      .set({ metadata: mergedMeta as Record<string, string> })
-      .where(eq(checkoutSessions.id, sessionId));
+    await updateSessionStatus(sessionId, SESSION_STATUS.AWAITING_APPROVAL);
 
     return NextResponse.json({
       interactUrl: pendingGrant.interact.redirect,
     });
   } catch (err) {
     console.error("Failed to prepare payment:", err);
+    await releaseSessionPreparation(sessionId).catch((releaseError) =>
+      console.error("Failed to release payment preparation:", releaseError)
+    );
     return NextResponse.json(
       { error: { message: "Failed to initiate payment. Please try again." } },
       { status: 500 }

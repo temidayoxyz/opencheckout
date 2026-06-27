@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSessionSchema } from "@/lib/checkout/validation";
-import { createCheckoutSession, listCheckoutSessions } from "@/lib/checkout/sessions";
+import {
+  createCheckoutSession,
+  listCheckoutSessions,
+  toPublicCheckoutSession,
+} from "@/lib/checkout/sessions";
 import { authenticateApiKey } from "@/lib/merchant/auth";
-import { checkIdempotencyKey, saveIdempotencyKey } from "@/lib/checkout/idempotency";
+import {
+  completeIdempotencyKey,
+  hashRequestBody,
+  reserveIdempotencyKey,
+} from "@/lib/checkout/idempotency";
+import { assertSafePublicUrl } from "@/lib/crypto/url-validation";
+import { getAppBaseUrl } from "@/lib/http/base-url";
 
 async function getMerchantId(request: NextRequest): Promise<string | null> {
   const authHeader = request.headers.get("authorization");
@@ -21,17 +31,6 @@ export async function POST(request: NextRequest) {
       { error: { type: "authentication_error", message: "Invalid API key" } },
       { status: 401 }
     );
-  }
-
-  // Idempotency check
-  const idempotencyKey = request.headers.get("idempotency-key");
-  if (idempotencyKey) {
-    const existing = await checkIdempotencyKey(idempotencyKey, merchantId);
-    if (existing) {
-      return NextResponse.json(existing.response, {
-        status: existing.statusCode,
-      });
-    }
   }
 
   let body: unknown;
@@ -57,16 +56,74 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const baseUrl = process.env.BASE_URL ?? request.nextUrl.origin;
+  try {
+    await Promise.all([
+      assertSafePublicUrl(parsed.data.success_url),
+      assertSafePublicUrl(parsed.data.cancel_url),
+    ]);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: {
+          type: "invalid_request_error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Redirect URLs must be public HTTPS URLs",
+        },
+      },
+      { status: 400 }
+    );
+  }
+
+  // Idempotency reservation after validation gives us a stable body hash and
+  // prevents concurrent duplicate requests from both doing checkout work.
+  const idempotencyKey = request.headers.get("idempotency-key");
+  const requestHash = hashRequestBody(body);
+  if (idempotencyKey) {
+    const lookup = await reserveIdempotencyKey(
+      idempotencyKey,
+      merchantId,
+      requestHash
+    );
+    if (lookup.state === "cached") {
+      return NextResponse.json(lookup.response, { status: lookup.statusCode });
+    }
+    if (lookup.state === "mismatch") {
+      return NextResponse.json(
+        {
+          error: {
+            type: "idempotency_error",
+            message:
+              "Idempotency-Key was already used with a different request body",
+          },
+        },
+        { status: 409 }
+      );
+    }
+    if (lookup.state === "in_progress") {
+      return NextResponse.json(
+        {
+          error: {
+            type: "idempotency_error",
+            message:
+              "An identical request with this Idempotency-Key is still processing",
+          },
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  const baseUrl = getAppBaseUrl(request);
 
   try {
     const session = await createCheckoutSession(merchantId, parsed.data, baseUrl);
-    const responseBody = { ...session };
+    const responseBody = toPublicCheckoutSession(session);
     const statusCode = 201;
 
-    // Save idempotency key for future duplicate requests
     if (idempotencyKey) {
-      await saveIdempotencyKey(
+      await completeIdempotencyKey(
         idempotencyKey,
         merchantId,
         session.id,
@@ -102,12 +159,19 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10) || 10, 100);
   const cursor = searchParams.get("cursor") ?? undefined;
 
-  const sessions = await listCheckoutSessions(merchantId, { limit, cursor });
+  const sessions = await listCheckoutSessions(merchantId, {
+    limit: limit + 1,
+    cursor,
+  });
+  const hasMore = sessions.length > limit;
+  const page = hasMore ? sessions.slice(0, limit) : sessions;
+  const nextCursor = hasMore ? page.at(-1)?.createdAt ?? null : null;
 
   return NextResponse.json({
     object: "list",
-    data: sessions,
-    has_more: sessions.length === limit,
+    data: page.map(toPublicCheckoutSession),
+    has_more: hasMore,
+    next_cursor: nextCursor,
     url: request.url,
   });
 }

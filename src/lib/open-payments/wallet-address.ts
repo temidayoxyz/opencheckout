@@ -1,5 +1,6 @@
 import { getPublicClient } from "./client";
 import type { WalletAddress } from "@interledger/open-payments";
+import { assertSafePublicUrl } from "@/lib/crypto/url-validation";
 
 /**
  * Resolve a wallet address URL to its public information.
@@ -8,6 +9,7 @@ import type { WalletAddress } from "@interledger/open-payments";
 export async function resolveWalletAddress(
   walletAddressUrl: string
 ): Promise<WalletAddress> {
+  await assertSafePublicUrl(walletAddressUrl);
   const client = await getPublicClient();
   return client.walletAddress.get({ url: walletAddressUrl });
 }
