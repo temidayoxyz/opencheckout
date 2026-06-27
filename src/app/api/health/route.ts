@@ -18,7 +18,7 @@ export async function GET() {
       status: "healthy",
       database: "ready",
       uptime: uptimeSeconds,
-      version: "0.1.0",
+      version: "0.2.0",
     });
   } catch (error) {
     console.error("Health check failed:", error);
@@ -27,7 +27,7 @@ export async function GET() {
         status: "unhealthy",
         database: "unavailable",
         uptime: uptimeSeconds,
-        version: "0.1.0",
+        version: "0.2.0",
       },
       { status: 503 }
     );
